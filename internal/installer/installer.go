@@ -89,11 +89,22 @@ func VerifyOfflineEngineBundle(data []byte) error {
 }
 
 func OfflineEngineInstallScript(root, bundle string) string {
+	return OfflineEngineInstallScriptWithProgress(root, bundle, "")
+}
+
+func OfflineEngineInstallScriptWithProgress(root, bundle, progressPath string) string {
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-	return `$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';` +
+	progress := ""
+	if strings.TrimSpace(progressPath) != "" {
+		progress = `$progress=` + q(progressPath) + `;function Report([int]$pct,[string]$msg){Set-Content -LiteralPath $progress -Value ($pct.ToString()+'|'+$msg) -Encoding UTF8};`
+	} else {
+		progress = `function Report([int]$pct,[string]$msg){};`
+	}
+	return `$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';` + progress +
 		`$root=` + q(root) + `;$bundle=` + q(bundle) + `;New-Item -ItemType Directory -Force -Path $root|Out-Null;` +
 		`$pySetup=Join-Path $bundle 'python-3.11.9-amd64.exe';$req=Join-Path $bundle 'requirements-offline.txt';$wh=Join-Path $bundle 'wheelhouse';$atomskSource=Join-Path $bundle 'atomsk\atomsk.exe';foreach($p in @($pySetup,$req,$wh,$atomskSource)){if(-not(Test-Path -LiteralPath $p)){throw ('Offline asset missing: '+$p)}};` +
-		`$py=Join-Path $root 'python';$args=@('/quiet','InstallAllUsers=0',('TargetDir='+$py),'Include_pip=1','Include_launcher=0','InstallLauncherAllUsers=0','AssociateFiles=0','Shortcuts=0','PrependPath=0','Include_doc=0','Include_test=0','Include_tcltk=0');$p=Start-Process -FilePath $pySetup -ArgumentList $args -Wait -PassThru;if($p.ExitCode -ne 0){throw ('Private Python failed: '+$p.ExitCode)};` +
-		`$python=Join-Path $py 'python.exe';& $python -m pip install --disable-pip-version-check --no-index --find-links $wh -r $req;if($LASTEXITCODE -ne 0){throw 'Offline wheels failed'};& $python -c "import ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('science-ok')";if($LASTEXITCODE -ne 0){throw 'Python validation failed'};` +
-		`$ad=Join-Path $root 'atomsk';New-Item -ItemType Directory -Force -Path $ad|Out-Null;$atomskDest=Join-Path $ad 'atomsk.exe';Copy-Item -LiteralPath $atomskSource -Destination $atomskDest -Force;if(-not(Test-Path -LiteralPath $atomskDest)){throw 'Private Atomsk copy failed'}`
+		`Report 32 'Installing private Python runtime';$py=Join-Path $root 'python';$args=@('/quiet','InstallAllUsers=0',('TargetDir='+$py),'Include_pip=1','Include_launcher=0','InstallLauncherAllUsers=0','AssociateFiles=0','Shortcuts=0','PrependPath=0','Include_doc=0','Include_test=0','Include_tcltk=0');$p=Start-Process -FilePath $pySetup -ArgumentList $args -Wait -PassThru;if($p.ExitCode -ne 0){throw ('Private Python failed: '+$p.ExitCode)};` +
+		`Report 48 'Installing bundled scientific Python packages';$python=Join-Path $py 'python.exe';& $python -m pip install --disable-pip-version-check --no-index --find-links $wh -r $req;if($LASTEXITCODE -ne 0){throw 'Offline wheels failed'};` +
+		`Report 70 'Validating ASE, spglib, pymatgen and AtomMan';& $python -c "import ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('science-ok')";if($LASTEXITCODE -ne 0){throw 'Python validation failed'};` +
+		`Report 80 'Installing bundled Atomsk';$ad=Join-Path $root 'atomsk';New-Item -ItemType Directory -Force -Path $ad|Out-Null;$atomskDest=Join-Path $ad 'atomsk.exe';Copy-Item -LiteralPath $atomskSource -Destination $atomskDest -Force;if(-not(Test-Path -LiteralPath $atomskDest)){throw 'Private Atomsk copy failed'}`
 }
