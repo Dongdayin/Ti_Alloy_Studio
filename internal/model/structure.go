@@ -82,6 +82,39 @@ func (s Structure) MinimumDistance() float64 {
 	}
 	return best
 }
+
+// ShortestPeriodicTranslation returns the shortest non-zero lattice
+// translation connecting a defect to one of its periodic images. It searches
+// the nearest image shell in lattice coordinates; non-periodic axes are held
+// at zero. The value is a geometric diagnostic, not a convergence criterion.
+func ShortestPeriodicTranslation(s Structure) float64 {
+	best := math.Inf(1)
+	for i := -1; i <= 1; i++ {
+		if !s.PBC[0] && i != 0 {
+			continue
+		}
+		for j := -1; j <= 1; j++ {
+			if !s.PBC[1] && j != 0 {
+				continue
+			}
+			for k := -1; k <= 1; k++ {
+				if !s.PBC[2] && k != 0 {
+					continue
+				}
+				if i == 0 && j == 0 && k == 0 {
+					continue
+				}
+				v := VAdd(VAdd(VScale(s.Cell[0], float64(i)), VScale(s.Cell[1], float64(j))), VScale(s.Cell[2], float64(k)))
+				d := Norm(v)
+				if d > 0 && d < best {
+					best = d
+				}
+			}
+		}
+	}
+	return best
+}
+
 func (s Structure) SpeciesCounts() map[string]int {
 	m := map[string]int{}
 	for _, e := range s.Species {
@@ -110,7 +143,9 @@ func BuildAlphaTi(a, c float64) Structure {
 	cell := Mat3{{a, 0, 0}, {-0.5 * a, 0.5 * math.Sqrt(3) * a, 0}, {0, 0, c}}
 	frac := []Vec3{{0, 0, 0}, {2.0 / 3.0, 1.0 / 3.0, 0.5}}
 	pos := []Vec3{FracToCart(frac[0], cell), FracToCart(frac[1], cell)}
-	return Structure{Cell: cell, Positions: pos, Species: []string{"Ti", "Ti"}, PBC: [3]bool{true, true, true}, Meta: map[string]any{"material": "Ti", "phase": "alpha", "bravais": "hcp", "a": a, "c": c, "c_over_a": c / a}}
+	s := Structure{Cell: cell, Positions: pos, Species: []string{"Ti", "Ti"}, PBC: [3]bool{true, true, true}, Meta: map[string]any{"material": "Ti", "phase": "alpha", "bravais": "hcp", "a": a, "c": c, "c_over_a": c / a}}
+	s.Meta["reference_nearest_neighbor_angstrom"] = s.MinimumDistance()
+	return s
 }
 
 // BuildBetaTi returns the conventional cubic BCC cell. This is the default
@@ -120,16 +155,22 @@ func BuildAlphaTi(a, c float64) Structure {
 func BuildBetaTi(a float64) Structure {
 	cell := Mat3{{a, 0, 0}, {0, a, 0}, {0, 0, a}}
 	frac := []Vec3{{0, 0, 0}, {0.5, 0.5, 0.5}}
-	return Structure{
+	s := Structure{
 		Cell:      cell,
 		Positions: []Vec3{FracToCart(frac[0], cell), FracToCart(frac[1], cell)},
 		Species:   []string{"Ti", "Ti"},
 		PBC:       [3]bool{true, true, true},
 		Meta:      map[string]any{"material": "Ti", "phase": "beta", "bravais": "bcc", "cell_setting": "conventional", "a": a},
 	}
+	s.Meta["reference_nearest_neighbor_angstrom"] = s.MinimumDistance()
+	return s
 }
 
 func BuildBetaTiPrimitive(a float64) Structure {
 	cell := Mat3{{-0.5 * a, 0.5 * a, 0.5 * a}, {0.5 * a, -0.5 * a, 0.5 * a}, {0.5 * a, 0.5 * a, -0.5 * a}}
-	return Structure{Cell: cell, Positions: []Vec3{{0, 0, 0}}, Species: []string{"Ti"}, PBC: [3]bool{true, true, true}, Meta: map[string]any{"material": "Ti", "phase": "beta", "bravais": "bcc", "cell_setting": "primitive", "a": a}}
+	s := Structure{Cell: cell, Positions: []Vec3{{0, 0, 0}}, Species: []string{"Ti"}, PBC: [3]bool{true, true, true}, Meta: map[string]any{"material": "Ti", "phase": "beta", "bravais": "bcc", "cell_setting": "primitive", "a": a}}
+	// A one-atom primitive cell has no explicit atom pair, so use the exact BCC
+	// nearest-neighbour distance sqrt(3)*a/2 as the parent reference scale.
+	s.Meta["reference_nearest_neighbor_angstrom"] = math.Sqrt(3) * a / 2
+	return s
 }
