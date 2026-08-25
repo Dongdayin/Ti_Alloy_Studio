@@ -1,9 +1,264 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ti Alloy Studio</title><link rel="stylesheet" href="/style.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ti Alloy Studio</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
 <body>
-<header class="topbar"><div><strong>Ti Alloy Studio</strong><span class="sub">Titanium Alloy Modeling · Validation · Visualization</span><span id="versionBadge" class="versionText">loading version…</span></div><div class="topActions"><button id="manualBtn" type="button">Manual</button><button id="exitBtn" type="button">Exit</button><div id="statusBadge" class="badge">Ready</div></div></header>
-<main class="layout"><aside class="sidebar"><h2>Model recipe</h2><nav id="moduleNav"><button class="nav active" data-module="random">Crystal / Alloy</button><button class="nav" data-module="sqs">SQS</button><button class="nav" data-module="vacancy">Defects / Surface</button><button class="nav" data-module="interface">α/β Interface</button><button class="nav" data-module="eos">EOS</button><button class="nav" data-module="gsfe">GSFE</button></nav>
-<section class="form" id="controls"><label>Phase<select id="phase"><option value="alpha">α-Ti · HCP</option><option value="beta">β-Ti · BCC</option></select></label><div class="triple"><label>Nx<input id="nx" type="number" min="1" value="4"></label><label>Ny<input id="ny" type="number" min="1" value="4"></label><label>Nz<input id="nz" type="number" min="1" value="6"></label></div><details><summary>Optional target lattice-vector lengths (Å)</summary><div class="triple"><label>Lx ≥<input id="targetX" type="number" min="0" step="1" value="0"></label><label>Ly ≥<input id="targetY" type="number" min="0" step="1" value="0"></label><label>Lz ≥<input id="targetZ" type="number" min="0" step="1" value="0"></label></div></details><details open><summary>Lattice</summary><div class="triple"><label>aα Å<input id="aAlpha" type="number" step="0.001" value="2.951"></label><label>cα Å<input id="cAlpha" type="number" step="0.001" value="4.684"></label><label>aβ Å<input id="aBeta" type="number" step="0.001" value="3.306"></label></div></details>
-<div id="compositionControls"><label>Recipe<select id="alloyType"><option value="random">Random solid solution</option><option value="crystal">Pure phase crystal</option></select></label><label>Composition, wt.%<input id="composition" value="Al=6,V=4" spellcheck="false"></label><label>Random seed<input id="seed" type="number" value="20260825"></label></div><div id="sqsControls" class="conditional"><div class="double"><label>Pair shells<input id="sqsShells" type="number" value="2" min="1"></label><label>Optimization steps<input id="sqsSteps" type="number" value="500" min="1"></label></div></div><div id="defectControls" class="conditional"><label>Model<select id="defectType"><option value="vacancy">Vacancy</option><option value="substitution">Substitution</option><option value="surface">Surface slab</option></select></label><div class="double"><label>Site ID<input id="siteId" type="number" value="0" min="0"></label><label>New element<input id="newSpecies" value="Al"></label></div><label>Surface preset<select id="surfacePreset"><option value="basal_0001">α (0001) basal</option><option value="prismatic_10-10">α (10-10) prismatic</option><option value="100">β (100)</option></select></label><label>Vacuum Å<input id="vacuum" type="number" value="15" step="0.5"></label></div><div id="interfaceControls" class="conditional"><div class="double"><label>Max repeat<input id="interfaceMax" type="number" value="8" min="1" max="32"></label><label>Candidate index<input id="interfaceCandidate" type="number" value="0" min="0"></label></div><p class="micro">Default coherent matching shares in-plane strain between α and β. Raw lattice mismatch and imposed strain are reported separately. Increase Max repeat to search lower-strain periodic matches; larger repeats increase atom count.</p><label>Interface distance Å<input id="interfaceDistance" type="number" value="2.5" step="0.1"></label><label>Vacuum Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label></div><div id="eosControls" class="conditional"><label>V/V₀ sequence<input id="eosRatios" value="0.94,0.96,0.98,1.00,1.02,1.04,1.06"></label><label>Displayed configuration index<input id="eosIndex" type="number" value="3" min="0"></label><p class="micro">EOS export creates one POSCAR per volume point plus manifest.csv.</p></div><div id="gsfeControls" class="conditional"><label>Slip system<select id="gsfePreset"><option value="basal_a">α basal {0001}&lt;a&gt;</option><option value="prismatic_a">α prismatic {10-10}&lt;a&gt;</option><option value="110_111">β {110}&lt;111&gt;</option></select></label><div class="double"><label>Path steps<input id="gsfeSteps" type="number" value="10" min="2"></label><label>Displayed index<input id="gsfeIndex" type="number" value="5" min="0"></label></div></div><button id="buildBtn" class="primary">Generate & validate</button></section></aside>
-<section class="workspace"><div class="panel viewerPanel"><div class="panelHead"><div><h2>3D Structure</h2><span id="structureSummary">—</span></div><div class="legend" id="legend"></div></div><div class="viewerToolbar"><button id="viewReset" type="button">Reset</button><button data-view="xy" type="button">XY</button><button data-view="xz" type="button">XZ</button><button data-view="yz" type="button">YZ</button><button id="projectionBtn" type="button">Orthographic</button><label class="radiusControl">Atom size<input id="atomRadius" type="range" min="2" max="10" value="5" step="0.5"></label></div><div class="canvasWrap"><canvas id="structureCanvas" width="1000" height="600" aria-label="Interactive 3D atomic structure"></canvas><div id="atomTooltip" class="tooltip"></div></div><p class="hint">Drag: rotate · Shift+drag: pan · Wheel: zoom · Click atom: pin details. Orthographic is the default scientific inspection view.</p><div id="atomSelection" class="selectionBar">No atom selected</div></div><div class="lowerGrid"><div class="panel chartPanel"><div class="panelHead"><h2>Composition</h2><span>hover/click for values</span></div><div class="chartWrap"><canvas id="compositionCanvas" width="700" height="300"></canvas><div id="compositionTooltip" class="tooltip chartTooltip"></div></div><div id="compositionTable" class="dataTable"></div></div><div class="panel chartPanel"><div class="panelHead"><h2>Analysis</h2><span id="analysisTitle">Model metrics</span></div><div class="chartWrap"><canvas id="analysisCanvas" width="700" height="300"></canvas><div id="chartTooltip" class="tooltip chartTooltip"></div></div><div id="analysisTable" class="dataTable"></div><div class="energyBox"><label>Calculated total energies (eV), optional<textarea id="energies" rows="2" placeholder="Paste values to plot E(V) or calculate GSFE"></textarea></label><button id="applyEnergy" type="button">Apply energies</button></div></div></div></section><aside class="inspector"><section class="panel info"><h2>Model information</h2><dl id="modelInfo"><dt>Status</dt><dd>No model</dd></dl></section><section class="panel"><div class="panelHead"><h2>Validation</h2><span id="validationStatus" class="badge">—</span></div><div id="validationPanel" class="checks"></div></section><section class="panel"><div class="panelHead"><h2>Independent engines</h2><span>actual calls</span></div><div id="enginePanel" class="enginePanel"></div></section><section class="panel"><h2>Export</h2><div class="exportGrid"><button data-export="poscar">VASP POSCAR</button><button data-export="xyz">XYZ</button><button data-export="extxyz">GPUMD extXYZ</button><button data-export="lammps">LAMMPS data</button><button data-export="cif">CIF</button><button id="eosBatchBtn" class="wide" data-export-batch="poscar" disabled>EOS batch ZIP</button><button id="gsfeBatchBtn" class="wide" data-export-batch="poscar" disabled>GSFE batch ZIP</button></div><p id="exportHint" class="micro">Exports the currently displayed structure.</p></section></aside></main><div id="toast" role="status" aria-live="polite"></div><script src="/app.js"></script></body></html>
+<header class="topbar">
+  <div>
+    <strong>Ti Alloy Studio</strong>
+    <span class="sub">Titanium Alloy Modeling · Validation · Visualization</span>
+    <span id="versionBadge" class="versionText">loading version…</span>
+  </div>
+  <div class="topActions">
+    <button id="manualBtn" type="button">Manual</button>
+    <button id="exitBtn" type="button">Exit</button>
+    <div id="statusBadge" class="badge">Ready</div>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <h2>Model recipe</h2>
+    <nav id="moduleNav">
+      <button class="nav active" data-module="random">Crystal / Alloy</button>
+      <button class="nav" data-module="sqs">SQS</button>
+      <button class="nav" data-module="vacancy">Defects / Surface</button>
+      <button class="nav" data-module="interface">α/β Interface</button>
+      <button class="nav" data-module="eos">EOS</button>
+      <button class="nav" data-module="gsfe">GSFE</button>
+    </nav>
+
+    <section class="form" id="controls">
+      <label>Phase
+        <select id="phase">
+          <option value="alpha">α-Ti · HCP</option>
+          <option value="beta">β-Ti · BCC</option>
+        </select>
+      </label>
+
+      <div class="triple">
+        <label>Nx<input id="nx" type="number" min="1" value="4"></label>
+        <label>Ny<input id="ny" type="number" min="1" value="4"></label>
+        <label>Nz<input id="nz" type="number" min="1" value="6"></label>
+      </div>
+
+      <details>
+        <summary>Optional target lattice-vector lengths (Å)</summary>
+        <div class="triple">
+          <label>Lx ≥<input id="targetX" type="number" min="0" step="1" value="0"></label>
+          <label>Ly ≥<input id="targetY" type="number" min="0" step="1" value="0"></label>
+          <label>Lz ≥<input id="targetZ" type="number" min="0" step="1" value="0"></label>
+        </div>
+      </details>
+
+      <details open>
+        <summary>Lattice</summary>
+        <div class="triple">
+          <label>aα Å<input id="aAlpha" type="number" step="0.001" value="2.951"></label>
+          <label>cα Å<input id="cAlpha" type="number" step="0.001" value="4.684"></label>
+          <label>aβ Å<input id="aBeta" type="number" step="0.001" value="3.306"></label>
+        </div>
+      </details>
+
+      <div id="compositionControls">
+        <label>Recipe
+          <select id="alloyType">
+            <option value="random">Random solid solution</option>
+            <option value="crystal">Pure phase crystal</option>
+          </select>
+        </label>
+        <label>Composition, wt.%<input id="composition" value="Al=6,V=4" spellcheck="false"></label>
+        <label>Random seed<input id="seed" type="number" value="20260825"></label>
+      </div>
+
+      <div id="sqsControls" class="conditional">
+        <label>SQS backend
+          <select id="sqsBackend">
+            <option value="atat">ATAT / mcsqs · research route</option>
+            <option value="preview">Internal pair-statistics preview</option>
+          </select>
+        </label>
+        <div class="double">
+          <label>WSL distro
+            <input id="atatDistro" value="" placeholder="blank = WSL default">
+          </label>
+          <label>ATAT run time, s
+            <input id="atatRunSeconds" type="number" value="30" min="1">
+          </label>
+        </div>
+        <div class="double">
+          <label>Pair cutoff, Å
+            <input id="atatPairCutoff" type="number" min="0" step="0.1" value="0">
+          </label>
+          <label>Triplet cutoff, Å
+            <input id="atatTripletCutoff" type="number" min="0" step="0.1" value="0">
+          </label>
+        </div>
+        <p class="micro">
+          ATAT pair cutoff must be entered explicitly; Ti Alloy Studio does not invent a universal SQS cluster cutoff.
+          Triplet = 0 disables three-body clusters. Converge cell size and chosen cluster set for the property of interest.
+        </p>
+        <details>
+          <summary>Preview-only annealer settings</summary>
+          <div class="double">
+            <label>Pair shells<input id="sqsShells" type="number" value="2" min="1"></label>
+            <label>Optimization steps<input id="sqsSteps" type="number" value="500" min="1"></label>
+          </div>
+          <p class="micro">This fallback is explicitly labeled Preview and is not ATAT/mcsqs.</p>
+        </details>
+      </div>
+
+      <div id="defectControls" class="conditional">
+        <label>Model
+          <select id="defectType">
+            <option value="vacancy">Vacancy</option>
+            <option value="substitution">Substitution</option>
+            <option value="surface">Surface slab</option>
+          </select>
+        </label>
+        <div class="double">
+          <label>Site ID<input id="siteId" type="number" value="0" min="0"></label>
+          <label>New element<input id="newSpecies" value="Al"></label>
+        </div>
+        <label>Surface preset
+          <select id="surfacePreset">
+            <option value="basal_0001">α (0001) basal</option>
+            <option value="prismatic_10-10">α (10-10) prismatic</option>
+            <option value="100">β (100)</option>
+          </select>
+        </label>
+        <label>Vacuum Å<input id="vacuum" type="number" value="15" step="0.5"></label>
+      </div>
+
+      <div id="interfaceControls" class="conditional">
+        <div class="double">
+          <label>Max repeat<input id="interfaceMax" type="number" value="8" min="1" max="32"></label>
+          <label>Candidate index<input id="interfaceCandidate" type="number" value="0" min="0"></label>
+        </div>
+        <p class="micro">
+          Coherent matching shares in-plane strain between α and β. Raw lattice mismatch and imposed prestrain are
+          reported separately as geometric screening quantities; relaxed energy/stress and size convergence remain required.
+        </p>
+        <label>Interface distance Å<input id="interfaceDistance" type="number" value="2.5" step="0.1"></label>
+        <label>Vacuum Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label>
+      </div>
+
+      <div id="eosControls" class="conditional">
+        <label>V/V₀ sequence<input id="eosRatios" value="0.94,0.96,0.98,1.00,1.02,1.04,1.06"></label>
+        <label>Displayed configuration index<input id="eosIndex" type="number" value="3" min="0"></label>
+        <p class="micro">EOS export creates one POSCAR per volume point plus manifest.csv. Energy fitting is not invented before DFT data exist.</p>
+      </div>
+
+      <div id="gsfeControls" class="conditional">
+        <label>Slip system
+          <select id="gsfePreset">
+            <option value="basal_a">α basal {0001}&lt;a&gt;</option>
+            <option value="prismatic_a">α prismatic {10-10}&lt;a&gt;</option>
+            <option value="110_111">β {110}&lt;111&gt;</option>
+          </select>
+        </label>
+        <div class="double">
+          <label>Path steps<input id="gsfeSteps" type="number" value="10" min="2"></label>
+          <label>Displayed index<input id="gsfeIndex" type="number" value="5" min="0"></label>
+        </div>
+      </div>
+
+      <button id="buildBtn" class="primary">Generate & validate</button>
+    </section>
+  </aside>
+
+  <section class="workspace">
+    <div class="panel viewerPanel">
+      <div class="panelHead">
+        <div><h2>3D Structure</h2><span id="structureSummary">—</span></div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="viewerToolbar">
+        <button id="viewReset" type="button">Reset</button>
+        <button data-view="xy" type="button">XY</button>
+        <button data-view="xz" type="button">XZ</button>
+        <button data-view="yz" type="button">YZ</button>
+        <button id="projectionBtn" type="button">Orthographic</button>
+        <label class="radiusControl">Atom size<input id="atomRadius" type="range" min="2" max="10" value="5" step="0.5"></label>
+      </div>
+      <div class="canvasWrap">
+        <canvas id="structureCanvas" width="1000" height="600" aria-label="Interactive 3D atomic structure"></canvas>
+        <div id="atomTooltip" class="tooltip"></div>
+      </div>
+      <p class="hint">Drag: rotate · Shift+drag: pan · Wheel: zoom · Click atom: pin details. Orthographic is the default scientific inspection view.</p>
+      <div id="atomSelection" class="selectionBar">No atom selected</div>
+    </div>
+
+    <div class="lowerGrid">
+      <div class="panel chartPanel">
+        <div class="panelHead"><h2>Composition</h2><span>hover for exact values</span></div>
+        <div class="chartWrap">
+          <canvas id="compositionCanvas" width="700" height="300"></canvas>
+          <div id="compositionTooltip" class="tooltip chartTooltip"></div>
+        </div>
+        <div id="compositionTable" class="dataTable"></div>
+      </div>
+
+      <div class="panel chartPanel">
+        <div class="panelHead"><h2>Analysis</h2><span id="analysisTitle">Model metrics</span></div>
+        <div class="chartWrap">
+          <canvas id="analysisCanvas" width="700" height="300"></canvas>
+          <div id="chartTooltip" class="tooltip chartTooltip"></div>
+        </div>
+        <div id="analysisTable" class="dataTable"></div>
+        <div class="energyBox">
+          <label>Calculated total energies (eV), optional
+            <textarea id="energies" rows="2" placeholder="Paste values to plot E(V) or calculate GSFE"></textarea>
+          </label>
+          <button id="applyEnergy" type="button">Apply energies</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="inspector">
+    <section class="panel info">
+      <h2>Model information</h2>
+      <dl id="modelInfo"><dt>Status</dt><dd>No model</dd></dl>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead"><h2>Validation</h2><span id="validationStatus" class="badge">—</span></div>
+      <div id="validationPanel" class="checks"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead"><h2>Environment</h2><button id="refreshEnv" type="button">Refresh</button></div>
+      <p id="environmentSummary" class="micro">Detecting Windows / WSL tools…</p>
+      <div id="environmentPanel" class="enginePanel"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead"><h2>Independent engines</h2><span>actual calls</span></div>
+      <div id="enginePanel" class="enginePanel"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Export</h2>
+      <div class="exportGrid">
+        <button data-export="poscar">VASP POSCAR</button>
+        <button data-export="xyz">XYZ</button>
+        <button data-export="extxyz">GPUMD extXYZ</button>
+        <button data-export="lammps">LAMMPS data</button>
+        <button data-export="cif">CIF</button>
+        <button id="eosBatchBtn" class="wide" data-export-batch="poscar" disabled>EOS batch ZIP</button>
+        <button id="gsfeBatchBtn" class="wide" data-export-batch="poscar" disabled>GSFE batch ZIP</button>
+      </div>
+      <p id="exportHint" class="micro">Exports the currently displayed structure.</p>
+    </section>
+  </aside>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/app.js"></script>
+</body>
+</html>
