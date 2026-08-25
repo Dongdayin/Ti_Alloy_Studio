@@ -186,6 +186,31 @@ func cleanupCommandSpec(script string) (string, []string) {
 	return "cmd.exe", []string{"/D", "/Q", "/C", script}
 }
 
+func removeInstalledPayloadExceptSelf(dir, self string) error {
+	selfAbs, err := filepath.Abs(self)
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		pathAbs, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		if strings.EqualFold(filepath.Clean(pathAbs), filepath.Clean(selfAbs)) {
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("remove installed payload %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
 func uninstall(quiet bool) int {
 	exe, err := os.Executable()
 	if err != nil {
@@ -198,8 +223,18 @@ func uninstall(quiet bool) int {
 	}
 	removeShortcuts()
 	unregisterUninstall()
-	tmp := filepath.Join(os.TempDir(), "TiAlloyStudio-remove.cmd")
-	script := fmt.Sprintf("@echo off\r\ntimeout /t 2 /nobreak >nul\r\nrmdir /s /q \"%s\"\r\ndel \"%%~f0\"\r\n", dir)
+
+	// Delete the large scientific payload synchronously while this process is
+	// still alive.  The asynchronous helper then has only one locked file to
+	// remove, which prevents Windows process-tree waiting from turning a normal
+	// uninstall into a long-running recursive deletion job.
+	if err = removeInstalledPayloadExceptSelf(dir, exe); err != nil {
+		notify(quiet, "Cannot remove installed files: "+err.Error())
+		return 1
+	}
+
+	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("TiAlloyStudio-remove-%d.cmd", time.Now().UnixNano()))
+	script := fmt.Sprintf("@echo off\r\nfor /L %%%%I in (1,1,20) do (\r\n  del /f /q \"%s\" >nul 2>nul\r\n  if not exist \"%s\" goto removed\r\n  ping -n 2 127.0.0.1 >nul\r\n)\r\nexit /b 1\r\n:removed\r\nrmdir \"%s\" >nul 2>nul\r\ndel /f /q \"%%%%~f0\"\r\n", exe, exe, dir)
 	if err = os.WriteFile(tmp, []byte(script), 0644); err != nil {
 		notify(quiet, "Cannot create uninstall cleanup: "+err.Error())
 		return 1
