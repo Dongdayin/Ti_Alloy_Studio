@@ -48,11 +48,10 @@ jobs:
         shell: pwsh
         run: |
           $smoke="$env:RUNNER_TEMP\tialloy-preinstall-native.json"
-          & .\internal\installer\payload\TiAlloyStudio.exe --smoke-test-file $smoke
-          $code=$LASTEXITCODE
+          $proc=Start-Process -FilePath '.\internal\installer\payload\TiAlloyStudio.exe' -ArgumentList @('--smoke-test-file',$smoke) -Wait -PassThru
           if (Test-Path $smoke) { Get-Content $smoke }
-          else { Write-Host 'Smoke JSON file was not created.' }
-          if ($code -ne 0) { throw "Windows pre-install native smoke executable failed with exit $code" }
+          else { throw 'Smoke JSON file was not created.' }
+          if ($proc.ExitCode -ne 0) { throw "Windows pre-install native smoke executable failed with exit $($proc.ExitCode)" }
           $native=Get-Content $smoke -Raw | ConvertFrom-Json
           if ($native.result.status -ne 'PASS') { throw 'Windows pre-install native smoke failed' }
 
@@ -70,8 +69,8 @@ jobs:
         run: |
           $install=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-CleanInstall'
           if (Test-Path $install) { Remove-Item $install -Recurse -Force }
-          & .\dist\TiAlloyStudio-Setup-x64-Offline.exe --quiet --install-dir "$install" --no-launch
-          if ($LASTEXITCODE -ne 0) { throw "Offline installer exited $LASTEXITCODE" }
+          $proc=Start-Process -FilePath '.\dist\TiAlloyStudio-Setup-x64-Offline.exe' -ArgumentList @('--quiet','--install-dir',$install,'--no-launch') -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Offline installer exited $($proc.ExitCode)" }
           if (-not (Test-Path "$install\TiAlloyStudio.exe")) { throw 'Installed application missing' }
           if (-not (Test-Path "$install\engines\python\python.exe")) { throw 'Installed private Python runtime missing' }
           if (-not (Test-Path "$install\engines\atomsk\atomsk.exe")) { throw 'Installed Atomsk missing' }
@@ -87,17 +86,17 @@ jobs:
         run: |
           $install=$env:TI_ALLOY_CLEAN_INSTALL
           $nativePath="$env:RUNNER_TEMP\tialloy-installed-native.json"
-          & "$install\TiAlloyStudio.exe" --smoke-test-file $nativePath
-          $nativeCode=$LASTEXITCODE
+          $nativeProc=Start-Process -FilePath "$install\TiAlloyStudio.exe" -ArgumentList @('--smoke-test-file',$nativePath) -Wait -PassThru
           if (Test-Path $nativePath) { Get-Content $nativePath }
-          if ($nativeCode -ne 0) { throw "Installed native smoke executable failed with exit $nativeCode" }
+          else { throw 'Installed native smoke JSON was not created.' }
+          if ($nativeProc.ExitCode -ne 0) { throw "Installed native smoke executable failed with exit $($nativeProc.ExitCode)" }
           $native=Get-Content $nativePath -Raw | ConvertFrom-Json
           if ($native.result.status -ne 'PASS') { throw 'Installed native scientific smoke failed' }
           $enginePath="$env:RUNNER_TEMP\tialloy-installed-engines.json"
-          & "$install\TiAlloyStudio.exe" --engine-smoke-file $enginePath
-          $engineCode=$LASTEXITCODE
+          $engineProc=Start-Process -FilePath "$install\TiAlloyStudio.exe" -ArgumentList @('--engine-smoke-file',$enginePath) -Wait -PassThru
           if (Test-Path $enginePath) { Get-Content $enginePath }
-          if ($engineCode -ne 0) { throw "Installed engine smoke executable failed with exit $engineCode" }
+          else { throw 'Installed mature-engine smoke JSON was not created.' }
+          if ($engineProc.ExitCode -ne 0) { throw "Installed engine smoke executable failed with exit $($engineProc.ExitCode)" }
           $engine=Get-Content $enginePath -Raw | ConvertFrom-Json
           if ($engine.status -ne 'PASS') { throw 'Installed mature-engine cross-check failed' }
 
@@ -105,8 +104,8 @@ jobs:
         shell: pwsh
         run: |
           $install=$env:TI_ALLOY_CLEAN_INSTALL
-          & "$install\Uninstall.exe" --uninstall --quiet
-          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited $LASTEXITCODE" }
+          $uninstallProc=Start-Process -FilePath "$install\Uninstall.exe" -ArgumentList @('--uninstall','--quiet') -Wait -PassThru
+          if ($uninstallProc.ExitCode -ne 0) { throw "Uninstaller exited $($uninstallProc.ExitCode)" }
           Start-Sleep -Seconds 6
           if (Test-Path $install) { throw 'Installation directory still exists after uninstall' }
           reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' *> $null
