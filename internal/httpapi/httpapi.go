@@ -41,7 +41,7 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":     "Ti Alloy Studio",
-		"version":  "0.1.4-phase1",
+		"version":  "0.1.5-phase1-r4",
 		"engine":   "TiModelCore Native + bundled Atomsk/ASE/spglib/pymatgen/AtomMan cross-check + WSL ATAT adapter",
 		"platform": "Windows x64 standalone offline with optional WSL scientific tools",
 	})
@@ -59,7 +59,7 @@ func (a *api) build(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid build request: %w", err))
 		return
 	}
-	res, err := a.state.BuildTracked(req)
+	res, err := a.state.BuildUser(req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
