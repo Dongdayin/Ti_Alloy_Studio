@@ -1,37 +1,28 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestRemoveInstalledPayloadExceptSelf(t *testing.T) {
-	dir := t.TempDir()
-	self := filepath.Join(dir, "Uninstall.exe")
-	mustWrite := func(path string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
+func TestUninstallCleanupScriptDeletesWholeInstallDirectoryAsynchronously(t *testing.T) {
+	dir := `C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio`
+	script := uninstallCleanupScript(dir)
+	for _, want := range []string{
+		`ping -n 2 127.0.0.1`,
+		`rmdir /s /q "C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio"`,
+		`if not exist "C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio" goto removed`,
+		`del /f /q "%~f0"`,
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("cleanup script missing %q:\n%s", want, script)
 		}
 	}
-	mustWrite(self)
-	mustWrite(filepath.Join(dir, "TiAlloyStudio.exe"))
-	mustWrite(filepath.Join(dir, "TiAlloyStudio-Manual.docx"))
-	mustWrite(filepath.Join(dir, "engines", "python", "python.exe"))
-	mustWrite(filepath.Join(dir, "engines", "atomsk", "atomsk.exe"))
+}
 
-	if err := removeInstalledPayloadExceptSelf(dir, self); err != nil {
-		t.Fatalf("remove payload: %v", err)
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].Name() != "Uninstall.exe" {
-		t.Fatalf("expected only Uninstall.exe to remain, got %#v", entries)
+func TestUninstallCleanupScriptDoesNotDeletePayloadSynchronously(t *testing.T) {
+	script := uninstallCleanupScript(`D:\TiAlloyStudio`)
+	if strings.Contains(script, "Uninstall.exe") {
+		t.Fatalf("cleanup should remove the install directory generically after parent exit, not special-case a running uninstaller: %s", script)
 	}
 }
