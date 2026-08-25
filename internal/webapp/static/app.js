@@ -71,8 +71,13 @@
       a_beta: num('aBeta'),
       composition_wt: compositionInput(),
       seed: num('seed'),
+      sqs_backend: $('sqsBackend').value,
       sqs_steps: num('sqsSteps'),
       sqs_shells: num('sqsShells'),
+      atat_distro: $('atatDistro').value.trim(),
+      atat_pair_cutoff_angstrom: num('atatPairCutoff'),
+      atat_triplet_cutoff_angstrom: num('atatTripletCutoff'),
+      atat_run_seconds: num('atatRunSeconds'),
       site_id: num('siteId'),
       new_species: $('newSpecies').value,
       surface_preset: $('surfacePreset').value,
@@ -537,11 +542,23 @@
         yLabel: 'Max imposed strain (%)'
       };
     }
+    if (model.module === 'sqs' && Array.isArray(series.correlations)) {
+      return {
+        points: series.correlations.map((c, i) => ({
+          x: Number(c.diameter),
+          y: Math.abs(Number(c.difference)),
+          index: i,
+          label: `${c.points}-point cluster #${i}`
+        })),
+        xLabel: 'Cluster diameter (Å)',
+        yLabel: '|correlation difference|'
+      };
+    }
     if (model.module === 'sqs' && Array.isArray(series.convergence)) {
       return {
-        points: series.convergence.map((v, i) => ({ x: i, y: Number(v), index: i, label: `Step ${i}` })),
-        xLabel: 'Recorded step',
-        yLabel: 'Objective'
+        points: series.convergence.map((v, i) => ({ x: i, y: Number(v), index: i, label: `Preview step ${i}` })),
+        xLabel: 'Recorded preview step',
+        yLabel: 'Preview objective'
       };
     }
     const numeric = Object.entries(analysis).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
@@ -638,6 +655,30 @@
     $('gsfeBatchBtn').disabled = model.module !== 'gsfe';
   }
 
+  async function refreshEnvironment() {
+    const summary = $('environmentSummary');
+    const panel = $('environmentPanel');
+    if (!summary || !panel) return;
+    summary.textContent = 'Detecting Windows / WSL tools…';
+    try {
+      const distro = $('atatDistro')?.value.trim() || '';
+      const response = await fetch(`/api/environment?distro=${encodeURIComponent(distro)}`, { cache: 'no-store' });
+      if (!response.ok) throw Error('Environment detection failed');
+      const env = await response.json();
+      summary.textContent = env.wsl_available
+        ? `${env.host_os}/${env.host_arch} · WSL: ${env.selected_distro || 'no distribution selected'}`
+        : `${env.host_os}/${env.host_arch} · WSL unavailable`;
+      panel.innerHTML = (env.tools || []).map((tool) => {
+        const css = tool.status === 'AVAILABLE' ? 'PASS' : 'UNAVAILABLE';
+        const details = [tool.path, tool.version, tool.message].filter(Boolean).map(esc).join('<br>');
+        return `<div class="engineCard ${css}"><header><strong>${esc(tool.name)}</strong><span>${esc(tool.status)}</span></header><p>${details || '—'}</p><small>${esc(tool.scope || '')}</small></div>`;
+      }).join('');
+    } catch (error) {
+      summary.textContent = error.message;
+      panel.innerHTML = '';
+    }
+  }
+
   async function downloadBlob(url, fallback) {
     try {
       const response = await fetch(url, { cache: 'no-store' });
@@ -703,6 +744,8 @@
   $('eosBatchBtn').onclick = () => downloadBlob('/api/export-batch?format=poscar', 'TiAlloyStudio-EOS-POSCAR.zip');
   $('gsfeBatchBtn').onclick = () => downloadBlob('/api/export-batch?format=poscar', 'TiAlloyStudio-GSFE-POSCAR.zip');
   $('manualBtn').onclick = () => downloadBlob('/manual', 'TiAlloyStudio-Manual.docx');
+  $('refreshEnv').onclick = refreshEnvironment;
+  $('atatDistro').addEventListener('change', refreshEnvironment);
   $('applyEnergy').onclick = applyEnergies;
   $('exitBtn').onclick = () => fetch('/api/exit', { method: 'POST' });
   window.addEventListener('resize', () => {
@@ -716,5 +759,6 @@
     .catch(() => {});
 
   setModule('random');
+  refreshEnvironment();
   build();
 })();
