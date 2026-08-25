@@ -115,7 +115,21 @@ jobs:
         shell: pwsh
         run: |
           $install=$env:TI_ALLOY_CLEAN_INSTALL
-          $uninstallProc=Start-Process -FilePath "$install\Uninstall.exe" -ArgumentList @('--uninstall','--quiet') -Wait -PassThru
+          $uninstallProc=Start-Process -FilePath "$install\Uninstall.exe" -ArgumentList @('--uninstall','--quiet') -PassThru
+          $exited=$uninstallProc.WaitForExit(30000)
+          if (-not $exited) {
+            Write-Host "Uninstaller PID $($uninstallProc.Id) did not exit within 30 seconds."
+            Write-Host '===== process snapshot ====='
+            Get-CimInstance Win32_Process | Where-Object {
+              $_.ProcessId -eq $uninstallProc.Id -or $_.ParentProcessId -eq $uninstallProc.Id
+            } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List | Out-Host
+            Write-Host '===== registry snapshot ====='
+            reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' | Out-Host
+            Write-Host '===== install directory snapshot ====='
+            if (Test-Path $install) { Get-ChildItem $install -Force | Select-Object Name,Length,LastWriteTime | Format-Table | Out-Host }
+            Stop-Process -Id $uninstallProc.Id -Force -ErrorAction SilentlyContinue
+            throw 'Uninstaller process timeout'
+          }
           if ($uninstallProc.ExitCode -ne 0) { throw "Uninstaller exited $($uninstallProc.ExitCode)" }
           Start-Sleep -Seconds 6
           if (Test-Path $install) { throw 'Installation directory still exists after uninstall' }
