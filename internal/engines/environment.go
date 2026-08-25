@@ -117,6 +117,7 @@ func DetectEnvironment(requestedDistro string) EnvironmentReport {
 		toolStatus("Bundled Python", "managed", pythonPath, safeVersion(pythonPath, "--version"), "Ti Alloy Studio private offline runtime"),
 		toolStatus("Bundled Atomsk", "managed", atomskPath, safeVersion(atomskPath, "--version"), "Ti Alloy Studio private offline Atomsk"),
 	)
+	report.Tools = append(report.Tools, managedPackageTools(pythonPath)...)
 
 	if lmp, err := exec.LookPath("lmp.exe"); err == nil {
 		report.Tools = append(report.Tools, toolStatus("LAMMPS", "Windows PATH", lmp, safeVersion(lmp, "-h"), "Detected only; Ti Alloy Studio does not select a potential automatically"))
