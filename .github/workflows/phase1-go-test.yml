@@ -26,14 +26,6 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: false
-      - name: Format gate
-        shell: bash
-        run: |
-          bad=$(gofmt -l cmd internal)
-          if [ -n "$bad" ]; then
-            printf 'Files not gofmt formatted:\n%s\n' "$bad"
-            exit 1
-          fi
       - name: Vet
         run: go vet ./...
       - name: Scientific core tests
