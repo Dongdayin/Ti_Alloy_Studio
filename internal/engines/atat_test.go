@@ -59,7 +59,7 @@ func TestParseATATBestCorrComputesRMSAndMaximumDifference(t *testing.T) {
 
 func TestParseATATStructureRoundTripShape(t *testing.T) {
 	text := `2.951 0 0
--1.4755 2.555873 0
+-1.4755 2.55564096657 0
 0 0 4.684
 1 0 0
 0 1 0
@@ -74,7 +74,7 @@ func TestParseATATStructureRoundTripShape(t *testing.T) {
 	if s.NAtoms() != 2 || s.Species[0] != "Ti" || s.Species[1] != "Al" {
 		t.Fatalf("unexpected parsed structure: %#v", s.Species)
 	}
-	if math.Abs(s.Volume()-model.BuildAlphaTi(2.951, 4.684).Volume()) > 1e-5 {
+	if math.Abs(s.Volume()-model.BuildAlphaTi(2.951, 4.684).Volume()) > 1e-8 {
 		t.Fatalf("parsed ATAT structure volume is inconsistent: %g", s.Volume())
 	}
 }
