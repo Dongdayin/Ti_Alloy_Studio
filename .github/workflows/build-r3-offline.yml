@@ -165,6 +165,7 @@ jobs:
           if ($regCode -eq 0) { throw 'Windows uninstall registration still exists after uninstall' }
           Write-Host 'Uninstall registration removed.'
           Write-Host 'uninstall-PASS'
+          exit 0
 
       - name: Write release hashes
         shell: pwsh
