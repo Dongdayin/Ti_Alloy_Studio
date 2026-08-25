@@ -115,24 +115,39 @@ jobs:
         shell: pwsh
         run: |
           $install=$env:TI_ALLOY_CLEAN_INSTALL
+          $cleanupScript=Join-Path $env:TEMP 'TiAlloyStudio-remove.cmd'
+          Remove-Item $cleanupScript -Force -ErrorAction SilentlyContinue
           $uninstallProc=Start-Process -FilePath "$install\Uninstall.exe" -ArgumentList @('--uninstall','--quiet') -PassThru
           $exited=$uninstallProc.WaitForExit(30000)
           if (-not $exited) {
             Write-Host "Uninstaller PID $($uninstallProc.Id) did not exit within 30 seconds."
-            Write-Host '===== process snapshot ====='
             Get-CimInstance Win32_Process | Where-Object {
               $_.ProcessId -eq $uninstallProc.Id -or $_.ParentProcessId -eq $uninstallProc.Id
             } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List | Out-Host
-            Write-Host '===== registry snapshot ====='
-            reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' | Out-Host
-            Write-Host '===== install directory snapshot ====='
-            if (Test-Path $install) { Get-ChildItem $install -Force | Select-Object Name,Length,LastWriteTime | Format-Table | Out-Host }
             Stop-Process -Id $uninstallProc.Id -Force -ErrorAction SilentlyContinue
             throw 'Uninstaller process timeout'
           }
           if ($uninstallProc.ExitCode -ne 0) { throw "Uninstaller exited $($uninstallProc.ExitCode)" }
-          Start-Sleep -Seconds 6
-          if (Test-Path $install) { throw 'Installation directory still exists after uninstall' }
+
+          $deleted=$false
+          for ($i=1; $i -le 30; $i++) {
+            if (-not (Test-Path $install)) { $deleted=$true; Write-Host "Install directory removed after $i second(s)."; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $deleted) {
+            Write-Host '===== cleanup script state ====='
+            if (Test-Path $cleanupScript) { Get-Content $cleanupScript | Out-Host } else { Write-Host 'cleanup script is absent' }
+            Write-Host '===== cleanup-related processes ====='
+            Get-CimInstance Win32_Process | Where-Object {
+              $_.Name -in @('cmd.exe','conhost.exe') -or $_.CommandLine -like '*TiAlloyStudio-remove*'
+            } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List | Out-Host
+            Write-Host '===== residual install directory ====='
+            Get-ChildItem $install -Force -ErrorAction SilentlyContinue | Select-Object Name,Length,LastWriteTime | Format-Table | Out-Host
+            Write-Host '===== registry state ====='
+            reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' | Out-Host
+            throw 'Installation directory still exists 30 seconds after uninstaller exit'
+          }
+
           reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' *> $null
           if ($LASTEXITCODE -eq 0) { throw 'Windows uninstall registration still exists after uninstall' }
 
