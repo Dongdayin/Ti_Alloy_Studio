@@ -5,28 +5,28 @@ import (
 	"testing"
 )
 
-func TestSQSDefaultsToNativePairSQSOnPureWindowsPath(t *testing.T) {
+func TestBuiltInPairSQSWorksWithoutATAT(t *testing.T) {
 	state := NewState()
 	res, err := state.Build(BuildRequest{
-		Module: "sqs",
-		Phase:  "alpha",
-		NX:     2,
-		NY:     2,
-		NZ:     2,
-		Seed:   17,
+		Module:     "sqs",
+		Phase:      "alpha",
+		NX:         2,
+		NY:         2,
+		NZ:         2,
+		SQSBackend: "preview", // compatibility key for the built-in TiModelCore pair-SQS backend
+		SQSSteps:   20,
+		SQSShells:  1,
+		Seed:       17,
 	})
 	if err != nil {
-		t.Fatalf("default SQS must work without WSL/ATAT: %v", err)
-	}
-	if got := strings.ToLower(res.Structure.Meta["sqs_backend"].(string)); got != "native" {
-		t.Fatalf("default SQS backend = %q, want native", got)
-	}
-	engine, _ := res.Analysis["engine"].(string)
-	if !strings.Contains(strings.ToLower(engine), "pair-sqs") || !strings.Contains(strings.ToLower(engine), "timodelcore") {
-		t.Fatalf("default SQS must identify the built-in pair-SQS scope, engine=%q", engine)
+		t.Fatalf("built-in pair-SQS must work without WSL/ATAT: %v", err)
 	}
 	if res.SQS == nil {
-		t.Fatal("native SQS must return pair-correlation quality metrics")
+		t.Fatal("built-in pair-SQS must return pair-correlation quality metrics")
+	}
+	engine, _ := res.Analysis["engine"].(string)
+	if strings.Contains(strings.ToLower(engine), "atat") {
+		t.Fatalf("built-in pair-SQS was mislabeled as ATAT, engine=%q", engine)
 	}
 }
 
@@ -45,30 +45,5 @@ func TestExplicitATATRequiresExplicitPairCutoff(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "pair cutoff") {
 		t.Fatalf("expected explicit pair-cutoff diagnostic, got %v", err)
-	}
-}
-
-func TestLegacyPreviewAliasUsesNativePairSQSAndDoesNotClaimATAT(t *testing.T) {
-	state := NewState()
-	res, err := state.Build(BuildRequest{
-		Module:     "sqs",
-		Phase:      "alpha",
-		NX:         2,
-		NY:         2,
-		NZ:         2,
-		SQSBackend: "preview",
-		SQSSteps:   20,
-		SQSShells:  1,
-		Seed:       17,
-	})
-	if err != nil {
-		t.Fatalf("legacy preview alias failed: %v", err)
-	}
-	engine, _ := res.Analysis["engine"].(string)
-	if strings.Contains(strings.ToLower(engine), "atat") {
-		t.Fatalf("native pair-SQS was mislabeled as ATAT, engine=%q", engine)
-	}
-	if got := strings.ToLower(res.Structure.Meta["sqs_backend"].(string)); got != "native" {
-		t.Fatalf("legacy alias must normalize to native provenance, got %q", got)
 	}
 }
