@@ -148,8 +148,22 @@ jobs:
             throw 'Installation directory still exists 30 seconds after uninstaller exit'
           }
 
+          Start-Sleep -Seconds 2
+          $orphanCleanupShells=@(Get-CimInstance Win32_Process | Where-Object {
+            $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*TiAlloyStudio-remove.cmd*'
+          })
+          if ($orphanCleanupShells.Count -gt 0) {
+            Write-Host '===== orphan cleanup shells ====='
+            $orphanCleanupShells | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List | Out-Host
+            throw 'Uninstall left an orphan cleanup cmd.exe process'
+          }
+
           reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' *> $null
-          if ($LASTEXITCODE -eq 0) { throw 'Windows uninstall registration still exists after uninstall' }
+          $regCode=$LASTEXITCODE
+          if ($regCode -eq 0) { throw 'Windows uninstall registration still exists after uninstall' }
+          Write-Host 'Uninstall registration removed.'
+          Write-Host 'uninstall-PASS'
+          exit 0
 
       - name: Write release hashes
         shell: pwsh
