@@ -49,6 +49,7 @@ func (s *State) BuildUser(req BuildRequest) (BuildResponse, error) {
 		out.Analysis["boundary_gap_angstrom"] = metrics.BoundaryGapAngstrom
 		out.Analysis["alpha_plane_span_angstrom"] = metrics.AlphaPlaneSpanAngstrom
 		out.Analysis["beta_plane_span_angstrom"] = metrics.BetaPlaneSpanAngstrom
+		out.Analysis["interface_equivalence_assumed"] = false
 
 		// The topology changed after the low-level slab construction; validation
 		// and independent-engine cross-checks must therefore be recomputed on the
@@ -68,6 +69,9 @@ func (s *State) BuildUser(req BuildRequest) (BuildResponse, error) {
 		} else {
 			addCheck(&out.Validation, "interface_gap_symmetry", "WARN", "The two initial interface gaps differ; inspect terminations before relaxation", gapDelta)
 		}
+		addCheck(&out.Validation, "alpha_region_span", "PASS", "Alpha-region normal span is reported for thickness-convergence studies; no universal converged thickness is imposed.", metrics.AlphaPlaneSpanAngstrom)
+		addCheck(&out.Validation, "beta_region_span", "PASS", "Beta-region normal span is reported for thickness-convergence studies; no universal converged thickness is imposed.", metrics.BetaPlaneSpanAngstrom)
+		addCheck(&out.Validation, "interface_pair_equivalence", "WARN", "The two periodic interfaces share the Burgers orientation relation but atomic terminations are not assumed equivalent. Do not normalize an interface excess energy by 2A unless equivalence has been demonstrated; otherwise treat the cell excess as the contribution of the interface pair.", float64(metrics.InterfaceCount))
 	}
 
 	enrichTrackedDiagnostics(normalized, &out)
