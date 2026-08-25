@@ -176,6 +176,10 @@ func preserveFailureDiagnostic(dir string, installErr error) {
 	_ = os.WriteFile(diagnosticPath(), []byte(b.String()), 0644)
 }
 
+func cleanupCommandSpec(script string) (string, []string) {
+	return "cmd.exe", []string{"/D", "/Q", "/C", script}
+}
+
 func uninstall(quiet bool) int {
 	exe, err := os.Executable()
 	if err != nil {
@@ -194,7 +198,8 @@ func uninstall(quiet bool) int {
 		notify(quiet, "Cannot create uninstall cleanup: "+err.Error())
 		return 1
 	}
-	if err = exec.Command("cmd.exe", "/C", "start", "", "/min", tmp).Start(); err != nil {
+	name, args := cleanupCommandSpec(tmp)
+	if err = exec.Command(name, args...).Start(); err != nil {
 		notify(quiet, "Cannot start uninstall cleanup: "+err.Error())
 		return 1
 	}
