@@ -20,7 +20,7 @@ if (-not (Test-Path $Bundle)) { throw 'engine-bundle.zip was not generated' }
 if ((Get-Item $Bundle).Length -lt 50MB) { throw 'engine-bundle.zip is suspiciously small; refusing to build an offline installer' }
 $RequiredEntries = @(
   'python-3.11.9-amd64.exe',
-  'atomsk_b0.13.1_Windows.zip',
+  'atomsk/atomsk.exe',
   'requirements-offline.txt',
   'wheelhouse/ase-3.29.0-py3-none-any.whl',
   'wheelhouse/spglib-2.7.0-cp311-cp311-win_amd64.whl',
