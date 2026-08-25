@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -17,13 +20,17 @@ import (
 )
 
 type ExternalRunRecord struct {
-	Tool       string `json:"tool"`
-	Command    string `json:"command"`
-	Distro     string `json:"distro,omitempty"`
-	ReturnCode int    `json:"return_code"`
-	Stdout     string `json:"stdout,omitempty"`
-	Stderr     string `json:"stderr,omitempty"`
-	WorkDir    string `json:"work_dir,omitempty"`
+	Tool         string            `json:"tool"`
+	Command      string            `json:"command"`
+	Distro       string            `json:"distro,omitempty"`
+	Executable   string            `json:"executable,omitempty"`
+	Version      string            `json:"version,omitempty"`
+	ReturnCode   int               `json:"return_code"`
+	Stdout       string            `json:"stdout,omitempty"`
+	Stderr       string            `json:"stderr,omitempty"`
+	WorkDir      string            `json:"work_dir,omitempty"`
+	InputSHA256  map[string]string `json:"input_sha256,omitempty"`
+	OutputSHA256 map[string]string `json:"output_sha256,omitempty"`
 }
 
 type BuildRecord struct {
@@ -85,15 +92,15 @@ func stateProject(s *State) *projectState {
 	return actual.(*projectState)
 }
 
-func sha256Text(text string) string {
-	h := sha256.Sum256([]byte(text))
+func sha256Bytes(data []byte) string {
+	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
 }
+func sha256Text(text string) string { return sha256Bytes([]byte(text)) }
 
 func structureSHA256(s model.Structure) string {
 	b, _ := json.Marshal(s)
-	h := sha256.Sum256(b)
-	return hex.EncodeToString(h[:])
+	return sha256Bytes(b)
 }
 
 func exportHashes(s model.Structure) map[string]string {
@@ -121,6 +128,89 @@ func asInt(v any) int {
 	}
 }
 
+func hashFileIfPresent(path string) (string, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	return sha256Bytes(b), true
+}
+
+func matchingATATWorkDir(out BuildResponse) string {
+	if out.Module != "sqs" || out.Allocation == nil {
+		return ""
+	}
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		return ""
+	}
+	wantCounts := out.Structure.SpeciesCounts()
+	var best string
+	var bestTime time.Time
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "TiAlloyStudio-ATAT-") {
+			continue
+		}
+		dir := filepath.Join(os.TempDir(), entry.Name())
+		info, err := entry.Info()
+		if err != nil || time.Since(info.ModTime()) > 30*time.Minute {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, "bestsqs.out"))
+		if err != nil {
+			continue
+		}
+		parsed, err := engines.ParseATATStructure(string(b))
+		if err != nil || parsed.NAtoms() != out.Structure.NAtoms() || !reflect.DeepEqual(parsed.SpeciesCounts(), wantCounts) {
+			continue
+		}
+		if best == "" || info.ModTime().After(bestTime) {
+			best, bestTime = dir, info.ModTime()
+		}
+	}
+	return best
+}
+
+func attachATATEvidence(out BuildResponse, r *ExternalRunRecord) {
+	if !strings.Contains(strings.ToLower(r.Tool), "atat") {
+		return
+	}
+	dir := matchingATATWorkDir(out)
+	if dir == "" {
+		return
+	}
+	r.WorkDir = dir
+	if b, err := os.ReadFile(filepath.Join(dir, "mcsqs.stdout")); err == nil {
+		r.Stdout = string(b)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "mcsqs.stderr")); err == nil {
+		r.Stderr = string(b)
+	}
+	r.InputSHA256 = map[string]string{}
+	r.OutputSHA256 = map[string]string{}
+	if h, ok := hashFileIfPresent(filepath.Join(dir, "rndstr.in")); ok {
+		r.InputSHA256["rndstr.in"] = h
+	}
+	for _, name := range []string{"bestsqs.out", "bestcorr.out", "mcsqs.stdout", "mcsqs.stderr"} {
+		if h, ok := hashFileIfPresent(filepath.Join(dir, name)); ok {
+			r.OutputSHA256[name] = h
+		}
+	}
+	distro, _ := out.Analysis["distro"].(string)
+	env := engines.DetectEnvironment(distro)
+	for _, tool := range env.Tools {
+		if tool.Name == "mcsqs" && tool.Status == "AVAILABLE" {
+			r.Executable = tool.Path
+			if tool.Version != "" {
+				r.Version = tool.Version
+			} else {
+				r.Version = "not reported by mcsqs environment probe"
+			}
+			break
+		}
+	}
+}
+
 func externalRuns(out BuildResponse) []ExternalRunRecord {
 	cmd, _ := out.Analysis["command"].(string)
 	if strings.TrimSpace(cmd) == "" {
@@ -139,6 +229,7 @@ func externalRuns(out BuildResponse) []ExternalRunRecord {
 	r.Stdout, _ = out.Analysis["stdout"].(string)
 	r.Stderr, _ = out.Analysis["stderr"].(string)
 	r.WorkDir, _ = out.Analysis["work_dir"].(string)
+	attachATATEvidence(out, &r)
 	return []ExternalRunRecord{r}
 }
 
