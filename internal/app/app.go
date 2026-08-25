@@ -98,9 +98,12 @@ func defaults(req *BuildRequest) {
 		req.Seed = 20260825
 	}
 	if req.SQSBackend == "" {
-		req.SQSBackend = "atat"
+		req.SQSBackend = "native"
 	}
 	req.SQSBackend = strings.ToLower(strings.TrimSpace(req.SQSBackend))
+	if req.SQSBackend == "preview" {
+		req.SQSBackend = "native"
+	}
 	if req.SQSSteps < 1 {
 		req.SQSSteps = 500
 	}
@@ -254,19 +257,21 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		}
 		out.Allocation = alloc
 		switch req.SQSBackend {
-		case "preview":
+		case "native":
 			r, err := model.GenerateSQS(host, *alloc, req.Seed, req.SQSShells, req.SQSSteps, 1e-5)
 			if err != nil {
 				return out, err
 			}
 			out.Structure = r.Structure
-			out.Structure.Meta["sqs_engine"] = "preview pair-statistics annealer"
-			out.Structure.Meta["sqs_backend"] = "preview"
+			out.Structure.Meta["sqs_engine"] = "TiModelCore pair-SQS"
+			out.Structure.Meta["sqs_backend"] = "native"
+			out.Structure.Meta["sqs_scope"] = "selected neighbor-shell pair correlations"
 			out.SQS = &r.Quality
 			out.Analysis["initial_objective"] = r.InitialObjective
 			out.Analysis["objective"] = r.Quality.Objective
 			out.Analysis["max_abs_pair_error"] = r.Quality.MaxAbsPairError
-			out.Analysis["engine"] = "Preview only — " + r.Engine
+			out.Analysis["engine"] = "TiModelCore pair-SQS · selected neighbor-shell pair correlations"
+			out.Analysis["scope"] = "pair correlations only; not claimed equivalent to full ATAT cluster-correlation SQS"
 			out.Series["convergence"] = r.Convergence
 
 		case "atat":
@@ -304,7 +309,7 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 			out.Series["correlations"] = r.Quality.Clusters
 
 		default:
-			return out, fmt.Errorf("unsupported SQS backend %q; choose \"atat\" or explicit \"preview\"", req.SQSBackend)
+			return out, fmt.Errorf("unsupported SQS backend %q; choose \"native\" or \"atat\"", req.SQSBackend)
 		}
 
 	case "vacancy":
@@ -573,8 +578,8 @@ func moduleValidation(out *BuildResponse) {
 					"ATAT bestcorr.out was parsed. RMS/max correlation differences are reported as convergence diagnostics; Ti Alloy Studio applies no universal acceptance threshold.",
 					out.ATAT.MaxAbsDifference)
 			} else if out.SQS != nil {
-				addCheck(&out.Validation, "sqs_preview_backend", "WARN",
-					"Internal pair-statistics annealer is a preview/fallback only, not ATAT mcsqs. Use ATAT and perform cell-size/correlation convergence for research SQS models.",
+				addCheck(&out.Validation, "sqs_native_pair_correlations", "PASS",
+					"TiModelCore pair-SQS completed. Pair-correlation objective/max errors are reported as diagnostics only; converge cell size, selected neighbor shells, and the target property. This backend is not claimed equivalent to full ATAT cluster-correlation SQS.",
 					out.SQS.MaxAbsPairError)
 			}
 		}
