@@ -9,10 +9,10 @@ func TestOfflineEngineInstallScriptReportsRealStages(t *testing.T) {
 	s := OfflineEngineInstallScriptWithProgress(`C:\TiAlloyStudio\engines`, `C:\Temp\bundle`, `C:\Temp\progress.txt`)
 	for _, needle := range []string{
 		"progress.txt",
-		"32|Installing private Python runtime",
-		"48|Installing bundled scientific Python packages",
-		"70|Validating ASE, spglib, pymatgen and AtomMan",
-		"80|Installing bundled Atomsk",
+		"Report 32 'Installing private Python runtime'",
+		"Report 48 'Installing bundled scientific Python packages'",
+		"Report 70 'Validating ASE, spglib, pymatgen and AtomMan'",
+		"Report 80 'Installing bundled Atomsk'",
 	} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("progress-enabled engine script missing %q", needle)
