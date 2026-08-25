@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+var activeInstallProgress *installProgress
+
 type installProgress struct {
 	quiet bool
 	path  string
@@ -58,6 +60,19 @@ func (p *installProgress) set(percent int, message string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	_ = os.WriteFile(p.path, []byte(fmt.Sprintf("%d|%s", percent, message)), 0644)
+}
+
+func progressSet(percent int, message string) {
+	if activeInstallProgress != nil {
+		activeInstallProgress.set(percent, message)
+	}
+}
+
+func progressPath() string {
+	if activeInstallProgress == nil || activeInstallProgress.quiet {
+		return ""
+	}
+	return activeInstallProgress.path
 }
 
 func (p *installProgress) close(success bool) {
