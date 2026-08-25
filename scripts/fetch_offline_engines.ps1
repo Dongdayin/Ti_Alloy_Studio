@@ -45,7 +45,7 @@ foreach ($Name in $Expected.Keys) {
   $File = Join-Path $Wheelhouse $Name
   if (-not (Test-Path $File)) { throw "Required wheel missing: $Name" }
   $Hash = (Get-FileHash -Algorithm SHA256 $File).Hash.ToLowerInvariant()
-  if ($Hash -ne $Expected[$Name]) { throw "SHA256 mismatch for $Name: $Hash" }
+  if ($Hash -ne $Expected[$Name]) { throw "SHA256 mismatch for ${Name}: $Hash" }
 }
 
 Write-Host '[6/7] Proving the wheelhouse installs with NO network access'
