@@ -78,37 +78,41 @@
       <div id="sqsControls" class="conditional">
         <label>SQS backend
           <select id="sqsBackend">
-            <option value="atat">ATAT / mcsqs · research route</option>
-            <option value="preview">Internal pair-statistics preview</option>
+            <option value="preview">TiModelCore pair-SQS · Windows built-in</option>
+            <option value="atat">ATAT / mcsqs · advanced external route</option>
           </select>
         </label>
-        <div class="double">
-          <label>WSL distro
-            <input id="atatDistro" value="" placeholder="blank = WSL default">
-          </label>
-          <label>ATAT run time, s
-            <input id="atatRunSeconds" type="number" value="30" min="1">
-          </label>
-        </div>
-        <div class="double">
-          <label>Pair cutoff, Å
-            <input id="atatPairCutoff" type="number" min="0" step="0.1" value="0">
-          </label>
-          <label>Triplet cutoff, Å
-            <input id="atatTripletCutoff" type="number" min="0" step="0.1" value="0">
-          </label>
-        </div>
         <p class="micro">
-          ATAT pair cutoff must be entered explicitly; Ti Alloy Studio does not invent a universal SQS cluster cutoff.
-          Triplet = 0 disables three-body clusters. Converge cell size and chosen cluster set for the property of interest.
+          The built-in pair-SQS backend is the default pure-Windows route. It optimizes pair-correlation statistics for the selected neighbor shells while preserving the exact integer composition. It is not claimed to be equivalent to a full ATAT cluster-correlation SQS; converge cell size, shell set, and the property of interest.
         </p>
-        <details>
-          <summary>Preview-only annealer settings</summary>
+        <details open>
+          <summary>Built-in pair-SQS settings</summary>
           <div class="double">
             <label>Pair shells<input id="sqsShells" type="number" value="2" min="1"></label>
             <label>Optimization steps<input id="sqsSteps" type="number" value="500" min="1"></label>
           </div>
-          <p class="micro">This fallback is explicitly labeled Preview and is not ATAT/mcsqs.</p>
+        </details>
+        <details>
+          <summary>ATAT / mcsqs advanced settings</summary>
+          <div class="double">
+            <label>WSL distro
+              <input id="atatDistro" value="" placeholder="blank = WSL default">
+            </label>
+            <label>ATAT run time, s
+              <input id="atatRunSeconds" type="number" value="30" min="1">
+            </label>
+          </div>
+          <div class="double">
+            <label>Pair cutoff, Å
+              <input id="atatPairCutoff" type="number" min="0" step="0.1" value="0">
+            </label>
+            <label>Triplet cutoff, Å
+              <input id="atatTripletCutoff" type="number" min="0" step="0.1" value="0">
+            </label>
+          </div>
+          <p class="micro">
+            ATAT is optional and only used when selected explicitly. It requires a WSL environment containing mcsqs/corrdump. Pair cutoff must be entered explicitly; Ti Alloy Studio does not invent a universal SQS cluster cutoff. Triplet = 0 disables three-body clusters.
+          </p>
         </details>
       </div>
 
