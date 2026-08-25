@@ -5,6 +5,13 @@ Set-Location $Root
 New-Item -ItemType Directory -Force -Path (Join-Path $Root 'internal\installer\payload') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $Root 'dist') | Out-Null
 
+Write-Host '[release] Reconstructing the QA-approved final Phase 1 manual'
+& (Join-Path $PSScriptRoot 'reconstruct_final_manual.ps1')
+$Manual = Join-Path $Root 'docs\TiAlloyStudio-Manual.docx'
+$ExpectedManualHash = '0389d2d967023c2a77fafc1e15ec0dfde28e0725b354672388ae2892a78edfda'
+$ManualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Manual).Hash.ToLowerInvariant()
+if ($ManualHash -ne $ExpectedManualHash) { throw "Final manual hash gate failed: $ManualHash" }
+
 & (Join-Path $PSScriptRoot 'fetch_offline_engines.ps1')
 
 Write-Host '[release] Verifying the real offline engine payload before compilation'
@@ -30,9 +37,10 @@ try {
 } finally { $Zip.Dispose() }
 
 Write-Host '[release] Staging the final manual into installer payload'
-$Manual = Join-Path $Root 'docs\TiAlloyStudio-Manual.docx'
 if (-not (Test-Path $Manual)) { throw 'Final Word manual is missing' }
 Copy-Item -LiteralPath $Manual -Destination (Join-Path $Root 'internal\installer\payload\TiAlloyStudio-Manual.docx') -Force
+$PayloadManualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $Root 'internal\installer\payload\TiAlloyStudio-Manual.docx')).Hash.ToLowerInvariant()
+if ($PayloadManualHash -ne $ExpectedManualHash) { throw "Installer payload manual hash mismatch: $PayloadManualHash" }
 
 Write-Host '[release] Running core Go tests before Windows binary generation'
 go test ./internal/model ./internal/app ./internal/engines ./internal/httpapi ./internal/studio ./internal/webapp
@@ -44,7 +52,6 @@ go build -trimpath -ldflags '-s -w -H windowsgui' -o internal\installer\payload\
 if ($LASTEXITCODE -ne 0) { throw 'Windows application build failed' }
 
 Write-Host '[release] Running full Go test suite and vet with real payload present'
-# Full package tests are pure Go and validate the embedded PE/manual/engine payload layout.
 go test ./...
 if ($LASTEXITCODE -ne 0) { throw 'Full Go tests failed' }
 go vet ./...
@@ -55,6 +62,7 @@ go build -trimpath -ldflags '-s -w -H windowsgui' -o dist\TiAlloyStudio-Setup-x6
 if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed' }
 
 Write-Host '[release] Computing SHA256'
+Get-FileHash -Algorithm SHA256 $Manual
 Get-FileHash -Algorithm SHA256 internal\installer\payload\engine-bundle.zip
 Get-FileHash -Algorithm SHA256 internal\installer\payload\TiAlloyStudio.exe
 Get-FileHash -Algorithm SHA256 dist\TiAlloyStudio-Setup-x64-Offline.exe
