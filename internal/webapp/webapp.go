@@ -18,9 +18,9 @@ func New(state *app.State) http.Handler {
 	sub, _ := fs.Sub(assets, "static")
 	files := http.FileServer(http.FS(sub))
 	index, _ := fs.ReadFile(sub, "index.html")
-	// Keep project/provenance controls in a small independent JS module so the
-	// validated scientific viewer remains isolated from project-management UI.
-	page := strings.Replace(string(index), "</body>", "<script src=\"/project.js\"></script></body>", 1)
+	// Keep project/provenance and lifecycle fixes in small independent modules so
+	// the validated scientific viewer remains isolated from auxiliary UI logic.
+	page := strings.Replace(string(index), "</body>", "<script src=\"/project.js\"></script><script src=\"/runtime-fixes.js\"></script></body>", 1)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			api.ServeHTTP(w, r)
