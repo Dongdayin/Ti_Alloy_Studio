@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	inst "tialloystudio/internal/installer"
 )
@@ -152,6 +153,29 @@ func smoke(dir string) error {
 	return nil
 }
 
+func diagnosticPath() string {
+	root := strings.TrimSpace(os.Getenv("RUNNER_TEMP"))
+	if root == "" {
+		root = os.TempDir()
+	}
+	return filepath.Join(root, "TiAlloyStudio-install-error.log")
+}
+
+func preserveFailureDiagnostic(dir string, installErr error) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ti Alloy Studio installation failure diagnostic\r\ntime_utc=%s\r\ninstall_dir=%s\r\nerror=%v\r\n", time.Now().UTC().Format(time.RFC3339), dir, installErr)
+	for _, name := range []string{"engine-install.log", "smoke.json", "engine-smoke.json"} {
+		path := filepath.Join(dir, name)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(&b, "\r\n===== %s =====\r\n<not available: %v>\r\n", name, err)
+			continue
+		}
+		fmt.Fprintf(&b, "\r\n===== %s =====\r\n%s\r\n", name, string(data))
+	}
+	_ = os.WriteFile(diagnosticPath(), []byte(b.String()), 0644)
+}
+
 func uninstall(quiet bool) int {
 	exe, err := os.Executable()
 	if err != nil {
@@ -209,6 +233,7 @@ func run() int {
 		}
 	}
 
+	_ = os.Remove(diagnosticPath())
 	payload, err := inst.PayloadFiles()
 	if err != nil {
 		notify(*quiet, "Installer payload error: "+err.Error())
@@ -230,6 +255,7 @@ func run() int {
 		err = registerUninstall(dir)
 	}
 	if err != nil {
+		preserveFailureDiagnostic(dir, err)
 		removeShortcuts()
 		unregisterUninstall()
 		_ = os.RemoveAll(dir)
