@@ -1,0 +1,4 @@
+ase==3.29.0
+spglib==2.7.0
+pymatgen-core==2026.7.31
+atomman==1.4.11

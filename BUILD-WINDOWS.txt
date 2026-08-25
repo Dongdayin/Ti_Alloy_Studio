@@ -1,0 +1,28 @@
+Ti Alloy Studio Phase 1 - deterministic Windows x64 build
+
+Prerequisite for developers only: Go 1.23+.
+End users do NOT need Go or any development environment.
+
+From the repository root:
+
+1) Test
+   go test -count=1 ./...
+   go vet ./...
+
+2) Build the standalone Windows GUI application
+   set GOOS=windows
+   set GOARCH=amd64
+   set CGO_ENABLED=0
+   go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist\TiAlloyStudio.exe .\cmd\studio
+
+3) Refresh installer payload
+   copy /Y dist\TiAlloyStudio.exe internal\installer\payload\TiAlloyStudio.exe
+   copy /Y docs\TiAlloyStudio-Manual.docx internal\installer\payload\TiAlloyStudio-Manual.docx
+
+4) Re-run tests so embedded payload is checked
+   go test -count=1 ./...
+
+5) Build installer
+   go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist\TiAlloyStudio-Setup-x64.exe .\cmd\installer
+
+The installer runs the installed TiAlloyStudio.exe scientific smoke test before accepting installation.

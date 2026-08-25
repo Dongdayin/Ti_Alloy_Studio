@@ -1,0 +1,81 @@
+name: Build R3 Offline Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - r3-offline
+    tags:
+      - 'r3-offline-*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-offline:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.23
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+
+      - name: Set up Python 3.11 release-builder runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+          cache: 'pip'
+
+      - name: Build verified fully-offline installer
+        shell: pwsh
+        run: ./scripts/build_r3_offline.ps1
+
+      - name: Run Windows-native core smoke test
+        shell: pwsh
+        run: |
+          & .\internal\installer\payload\TiAlloyStudio.exe --smoke-test-file "$env:RUNNER_TEMP\tialloy-smoke.txt"
+          Get-Content "$env:RUNNER_TEMP\tialloy-smoke.txt"
+          if ((Get-Content "$env:RUNNER_TEMP\tialloy-smoke.txt" -Raw) -notmatch 'PASS') { throw 'Windows core smoke failed' }
+
+      - name: Verify payload is offline and complete
+        shell: pwsh
+        run: |
+          $bundle = 'internal\installer\payload\engine-bundle.zip'
+          if ((Get-Item $bundle).Length -lt 50MB) { throw 'Engine bundle too small' }
+          if (Select-String -Path 'internal\installer\installer.go','cmd\installer\main.go' -Pattern 'Invoke-WebRequest|https?://|pip install --upgrade' -Quiet) {
+            throw 'End-user installer source contains forbidden online-install behavior'
+          }
+
+      - name: Write release hashes
+        shell: pwsh
+        run: |
+          $files = @(
+            'internal\installer\payload\engine-bundle.zip',
+            'internal\installer\payload\TiAlloyStudio.exe',
+            'dist\TiAlloyStudio-Setup-x64-Offline.exe'
+          )
+          $lines = foreach ($f in $files) {
+            $h=(Get-FileHash -Algorithm SHA256 $f).Hash.ToLowerInvariant()
+            "$h  $f"
+          }
+          $lines | Set-Content -Encoding ascii dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
+
+      - name: Upload offline release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TiAlloyStudio-R3-Offline-Windows-x64
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          path: |
+            dist/TiAlloyStudio-Setup-x64-Offline.exe
+            dist/SHA256SUMS.txt
+            docs/TiAlloyStudio-Manual.docx
+            internal/installer/payload/THIRD_PARTY_NOTICES.txt

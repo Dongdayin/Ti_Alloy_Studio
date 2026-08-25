@@ -1,0 +1,38 @@
+Ti Alloy Studio Phase 1 R3 Offline - bundled scientific engines
+
+R3 Offline is designed so the end user's installation requires no internet access and does not modify system Python, Conda, or PATH. The release installer carries an engine-bundle.zip that contains the official Windows distributions and a fully resolved offline Python wheelhouse.
+
+CPython 3.11.9 (Windows x64 full installer)
+  Project: https://www.python.org/
+  License: Python Software Foundation License
+  Purpose: private runtime under <install>\engines\python.
+
+Atomsk 0.13.1 (Microsoft Windows distribution)
+  Project: https://atomsk.univ-lille.fr/
+  License: GNU General Public License v3 or later
+  Purpose: independent structure read/write and transformation validation.
+  R3 distributes Atomsk as a separate executable and invokes it as an external process.
+
+Atomic Simulation Environment (ASE) 3.29.0
+  Project: https://ase-lib.org/
+  License: LGPL-2.1-or-later
+  Purpose: independent VASP structure read-back, cell and volume checks.
+
+spglib 2.7.0
+  Project: https://spglib.readthedocs.io/
+  License: BSD-3-Clause
+  Purpose: independent symmetry/space-group analysis.
+
+pymatgen-core 2026.7.31
+  Project: https://pymatgen.org/
+  License: MIT
+  Purpose: independent VASP/POSCAR I/O and lattice checks using the official lightweight pymatgen core package.
+
+AtomMan 1.4.11
+  Project: https://www.ctcms.nist.gov/potentials/atomman/
+  License: see bundled package metadata/source distribution
+  Purpose: independent atomistic structure/defect representation and future defect-model cross-checks.
+
+The wheelhouse also contains the transitive dependencies needed by the pinned packages above. Their license metadata and SHA256 values are recorded in the release engine bundle.
+
+The build-time fetch script is allowed to access official package servers. The end-user installer is not.
