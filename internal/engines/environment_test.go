@@ -29,6 +29,14 @@ func TestWSLProbeAlwaysPrintsOneLinePerTool(t *testing.T) {
 	}
 }
 
+func TestParseManagedPackageVersions(t *testing.T) {
+	raw := "ASE|ase|3.29.0\nspglib|spglib|2.7.0\npymatgen|pymatgen-core|2026.7.31\nAtomMan|atomman|1.4.11\n"
+	got := parseManagedPackageLines(raw)
+	if got["ASE"] != "3.29.0" || got["spglib"] != "2.7.0" || got["pymatgen"] != "2026.7.31" || got["AtomMan"] != "1.4.11" {
+		t.Fatalf("managed versions parsed incorrectly: %#v", got)
+	}
+}
+
 func TestChooseWSLDistroHonorsRequestedName(t *testing.T) {
 	distros := []string{"Ubuntu-24.04", "Ubuntu"}
 	if got := chooseWSLDistro(distros, "Ubuntu"); got != "Ubuntu" {
