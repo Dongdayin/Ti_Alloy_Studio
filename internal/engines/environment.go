@@ -43,6 +43,21 @@ func parseToolPathLines(raw string) map[string]string {
 	return out
 }
 
+func buildWSLProbeScript(toolNames []string) string {
+	var script strings.Builder
+	for _, name := range toolNames {
+		q := quoteBash(name)
+		// command -v is authoritative when the tool is on PATH. If it is not,
+		// search a bounded set of common user/software locations without changing PATH.
+		fmt.Fprintf(&script,
+			"p=$(command -v %s 2>/dev/null || true); "+
+				"if [ -z \"$p\" ]; then p=$(find \"$HOME\" /usr/local /opt -maxdepth 5 -type f -name %s -perm -u+x -print -quit 2>/dev/null || true); fi; "+
+				"printf '%%s|%%s\\n' %s \"$p\"; ",
+			q, q, q)
+	}
+	return script.String()
+}
+
 func chooseWSLDistro(distros []string, requested string) string {
 	requested = strings.TrimSpace(requested)
 	if requested == "" {
@@ -136,18 +151,15 @@ func DetectEnvironment(requestedDistro string) EnvironmentReport {
 	}
 
 	toolNames := []string{"python3", "atomsk", "mcsqs", "corrdump", "lmp", "lmp_serial", "lmp_mpi", "gpumd", "nep", "vasp_std"}
-	var script strings.Builder
-	for _, name := range toolNames {
-		fmt.Fprintf(&script, "printf '%s|'; command -v %s 2>/dev/null || true; ", name, name)
-	}
-	args := append(wslPrefix(report.SelectedDistro), "--", "bash", "-lc", script.String())
+	script := buildWSLProbeScript(toolNames)
+	args := append(wslPrefix(report.SelectedDistro), "--", "bash", "-lc", script)
 	pathsOut, pathsErr := exec.Command(wslExe, args...).CombinedOutput()
 	paths := map[string]string{}
 	if pathsErr == nil {
 		paths = parseToolPathLines(string(pathsOut))
 	}
 	for _, name := range toolNames {
-		message := "Optional external tool not found in selected WSL distribution"
+		message := "Optional external tool not found in selected WSL distribution (PATH and bounded common-location search checked)"
 		if name == "mcsqs" || name == "corrdump" {
 			message = "ATAT tool; required for the ATAT SQS backend"
 		}
