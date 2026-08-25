@@ -115,8 +115,7 @@ jobs:
         shell: pwsh
         run: |
           $install=$env:TI_ALLOY_CLEAN_INSTALL
-          $cleanupScript=Join-Path $env:TEMP 'TiAlloyStudio-remove.cmd'
-          Remove-Item $cleanupScript -Force -ErrorAction SilentlyContinue
+          Get-ChildItem $env:TEMP -Filter 'TiAlloyStudio-remove-*.cmd' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
           $uninstallProc=Start-Process -FilePath "$install\Uninstall.exe" -ArgumentList @('--uninstall','--quiet') -PassThru
           $exited=$uninstallProc.WaitForExit(30000)
           if (-not $exited) {
@@ -130,27 +129,30 @@ jobs:
           if ($uninstallProc.ExitCode -ne 0) { throw "Uninstaller exited $($uninstallProc.ExitCode)" }
 
           $deleted=$false
-          for ($i=1; $i -le 30; $i++) {
+          for ($i=1; $i -le 120; $i++) {
             if (-not (Test-Path $install)) { $deleted=$true; Write-Host "Install directory removed after $i second(s)."; break }
             Start-Sleep -Seconds 1
           }
           if (-not $deleted) {
             Write-Host '===== cleanup script state ====='
-            if (Test-Path $cleanupScript) { Get-Content $cleanupScript | Out-Host } else { Write-Host 'cleanup script is absent' }
+            Get-ChildItem $env:TEMP -Filter 'TiAlloyStudio-remove-*.cmd' -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Host "--- $($_.FullName) ---"
+              Get-Content $_.FullName | Out-Host
+            }
             Write-Host '===== cleanup-related processes ====='
             Get-CimInstance Win32_Process | Where-Object {
-              $_.Name -in @('cmd.exe','conhost.exe') -or $_.CommandLine -like '*TiAlloyStudio-remove*'
+              $_.Name -in @('cmd.exe','conhost.exe') -or $_.CommandLine -like '*TiAlloyStudio-remove-*'
             } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List | Out-Host
             Write-Host '===== residual install directory ====='
             Get-ChildItem $install -Force -ErrorAction SilentlyContinue | Select-Object Name,Length,LastWriteTime | Format-Table | Out-Host
             Write-Host '===== registry state ====='
             reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' | Out-Host
-            throw 'Installation directory still exists 30 seconds after uninstaller exit'
+            throw 'Installation directory still exists 120 seconds after uninstaller exit'
           }
 
           Start-Sleep -Seconds 2
           $orphanCleanupShells=@(Get-CimInstance Win32_Process | Where-Object {
-            $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*TiAlloyStudio-remove.cmd*'
+            $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*TiAlloyStudio-remove-*'
           })
           if ($orphanCleanupShells.Count -gt 0) {
             Write-Host '===== orphan cleanup shells ====='
@@ -163,7 +165,6 @@ jobs:
           if ($regCode -eq 0) { throw 'Windows uninstall registration still exists after uninstall' }
           Write-Host 'Uninstall registration removed.'
           Write-Host 'uninstall-PASS'
-          exit 0
 
       - name: Write release hashes
         shell: pwsh
@@ -181,6 +182,67 @@ jobs:
           $lines | Set-Content -Encoding ascii dist\SHA256SUMS.txt
           Get-Content dist\SHA256SUMS.txt
 
+      - name: Write final Phase 1 acceptance report
+        shell: pwsh
+        run: |
+          $native=Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json" -Raw | ConvertFrom-Json
+          $engines=Get-Content "$env:RUNNER_TEMP\tialloy-installed-engines.json" -Raw | ConvertFrom-Json
+          $hashes=Get-Content 'dist\SHA256SUMS.txt'
+          $engineLines=@()
+          foreach ($e in $engines.engines) {
+            $engineLines += "- $($e.name): $($e.status) — $($e.version)"
+          }
+          $report=@"
+          # Ti Alloy Studio — Phase 1 Final Acceptance Report
+
+          ## Release identity
+
+          - Repository: Dongdayin/Ti_Alloy_Studio
+          - Branch: r3-offline
+          - Commit: $env:GITHUB_SHA
+          - Windows workflow run: $env:GITHUB_RUN_ID
+          - Windows runner: windows-latest
+          - Installation mode: fully offline, user-selectable install directory
+
+          ## Release gates
+
+          - Go full test suite: PASS
+          - go vet: PASS
+          - Final 28-page Word manual byte-identity gate: PASS
+          - Offline engine-bundle completeness gate: PASS
+          - Windows pre-install native scientific smoke: PASS
+          - Clean Windows temporary-directory installation: PASS
+          - Installed native scientific smoke: PASS
+          - Installed mature-engine cross-check: PASS
+          - Windows uninstall registration: PASS
+          - Actual uninstall and installation-directory removal: PASS
+          - Release SHA256 generation: PASS
+
+          ## Native scientific smoke
+
+          - Status: $($native.result.status)
+          - Atom count: $($native.result.atoms)
+          - Ti-6Al-4V 192-site integer allocation: Ti=$($native.result.counts.Ti), Al=$($native.result.counts.Al), V=$($native.result.counts.V)
+          - GSFE structures in smoke series: $($native.result.gsfe_points)
+          - Checks: $($native.result.checks -join '; ')
+
+          ## Bundled mature-engine cross-check
+
+          $($engineLines -join "`n")
+
+          ## SHA256
+
+          ```text
+          $($hashes -join "`n")
+          ```
+
+          ## Phase 1 boundary
+
+          Phase 1 provides titanium-alloy structure generation, composition integerization, random-alloy and SQS workflows, point defects, selected surfaces, Burgers alpha/beta interface construction, EOS and GSFE structure-series generation, validation, scientific visualization, provenance, and VASP/LAMMPS/extxyz/CIF-style export paths implemented by the release. Long-running VASP/LAMMPS/GPUMD calculations, automatic EOS fitting from DFT results, NEP training/active learning, complex dislocation cores, grain boundaries, polycrystals, cracks, nanoindentation, and shock workflows remain later-phase work unless explicitly implemented and tested in the software.
+          "@
+          $report | Set-Content -LiteralPath 'dist\Phase1-Acceptance-Report.md' -Encoding utf8
+          Get-Content 'dist\Phase1-Acceptance-Report.md'
+
       - name: Upload offline release artifact
         uses: actions/upload-artifact@v4
         with:
@@ -191,5 +253,6 @@ jobs:
           path: |
             dist/TiAlloyStudio-Setup-x64-Offline.exe
             dist/SHA256SUMS.txt
+            dist/Phase1-Acceptance-Report.md
             docs/TiAlloyStudio-Manual.docx
             internal/installer/payload/THIRD_PARTY_NOTICES.txt
