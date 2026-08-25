@@ -7,11 +7,11 @@ import (
 
 func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
 	st := NewState()
-	_, err := st.Build(BuildRequest{Module: "random", Phase: "alpha", NX: 2, NY: 2, NZ: 2, CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 11})
+	_, err := st.BuildTracked(BuildRequest{Module: "random", Phase: "alpha", NX: 2, NY: 2, NZ: 2, CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 11})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = st.Build(BuildRequest{Module: "random", Phase: "alpha", NX: 2, NY: 2, NZ: 2, CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 22})
+	_, err = st.BuildTracked(BuildRequest{Module: "random", Phase: "alpha", NX: 2, NY: 2, NZ: 2, CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 22})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
 
 func TestProjectImportRestoresLastRequestAndContinuesLineage(t *testing.T) {
 	original := NewState()
-	_, err := original.Build(BuildRequest{Module: "gsfe", Phase: "alpha", NX: 2, NY: 2, NZ: 4, GSFEPreset: "basal_a", GSFESteps: 8})
+	_, err := original.BuildTracked(BuildRequest{Module: "gsfe", Phase: "alpha", NX: 2, NY: 2, NZ: 4, GSFEPreset: "basal_a", GSFESteps: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
