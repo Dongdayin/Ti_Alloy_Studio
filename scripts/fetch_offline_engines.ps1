@@ -28,11 +28,14 @@ $Stage = Join-Path $env:TEMP ('TiAlloyStudio-lock-' + [guid]::NewGuid())
 & $BuildPython -m venv $Stage
 $Py = Join-Path $Stage 'Scripts\python.exe'
 & $Py -m pip install --disable-pip-version-check --upgrade pip
+if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed in release-builder environment' }
 & $Py -m pip install --disable-pip-version-check -r $Spec
+if ($LASTEXITCODE -ne 0) { throw 'Pinned science environment resolution failed' }
 & $Py -m pip freeze --all | Where-Object { $_ -notmatch '^(pip|setuptools)==' } | Set-Content -LiteralPath $Lock -Encoding ASCII
 
-Write-Host '[4/7] Downloading complete Windows wheelhouse'
-& $Py -m pip download --disable-pip-version-check --only-binary=:all: --dest $Wheelhouse -r $Lock
+Write-Host '[4/7] Building complete Windows wheelhouse (build sdists such as bibtexparser when necessary)'
+& $Py -m pip wheel --disable-pip-version-check --wheel-dir $Wheelhouse -r $Lock
+if ($LASTEXITCODE -ne 0) { throw 'Wheelhouse build failed' }
 
 Write-Host '[5/7] Verifying top-level official wheels'
 $Expected = @{
@@ -53,6 +56,7 @@ $Offline = Join-Path $env:TEMP ('TiAlloyStudio-offline-' + [guid]::NewGuid())
 & $BuildPython -m venv $Offline
 $OfflinePy = Join-Path $Offline 'Scripts\python.exe'
 & $OfflinePy -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse -r $Lock
+if ($LASTEXITCODE -ne 0) { throw 'Offline wheelhouse installation failed' }
 & $OfflinePy -c "import ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('offline-python-stack-PASS')"
 if ($LASTEXITCODE -ne 0) { throw 'Offline science stack verification failed' }
 
