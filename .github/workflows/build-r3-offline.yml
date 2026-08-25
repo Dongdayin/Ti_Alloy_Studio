@@ -3,6 +3,8 @@ name: Build R3 Offline Windows Installer
 on:
   workflow_dispatch:
   push:
+    branches:
+      - r3-offline
     tags:
       - 'r3-offline-*'
 
@@ -33,12 +35,23 @@ jobs:
         shell: pwsh
         run: ./scripts/build_r3_offline.ps1
 
-      - name: Run Windows-native core smoke test
+      - name: Verify final manual byte identity
         shell: pwsh
         run: |
-          & .\internal\installer\payload\TiAlloyStudio.exe --smoke-test-file "$env:RUNNER_TEMP\tialloy-smoke.txt"
-          Get-Content "$env:RUNNER_TEMP\tialloy-smoke.txt"
-          if ((Get-Content "$env:RUNNER_TEMP\tialloy-smoke.txt" -Raw) -notmatch 'PASS') { throw 'Windows core smoke failed' }
+          $expected='0389d2d967023c2a77fafc1e15ec0dfde28e0725b354672388ae2892a78edfda'
+          $docs=(Get-FileHash -Algorithm SHA256 'docs\TiAlloyStudio-Manual.docx').Hash.ToLowerInvariant()
+          $payload=(Get-FileHash -Algorithm SHA256 'internal\installer\payload\TiAlloyStudio-Manual.docx').Hash.ToLowerInvariant()
+          if ($docs -ne $expected -or $payload -ne $expected) { throw "Manual identity failed: docs=$docs payload=$payload" }
+          Write-Host "manual-sha256=$docs"
+
+      - name: Run Windows-native core smoke test before install
+        shell: pwsh
+        run: |
+          & .\internal\installer\payload\TiAlloyStudio.exe --smoke-test-file "$env:RUNNER_TEMP\tialloy-preinstall-native.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Windows pre-install native smoke executable failed' }
+          $native=Get-Content "$env:RUNNER_TEMP\tialloy-preinstall-native.json" -Raw | ConvertFrom-Json
+          if ($native.result.status -ne 'PASS') { throw 'Windows pre-install native smoke failed' }
+          Get-Content "$env:RUNNER_TEMP\tialloy-preinstall-native.json"
 
       - name: Verify payload is offline and complete
         shell: pwsh
@@ -49,10 +62,54 @@ jobs:
             throw 'End-user installer source contains forbidden online-install behavior'
           }
 
+      - name: Clean-install final offline installer
+        shell: pwsh
+        run: |
+          $install=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-CleanInstall'
+          if (Test-Path $install) { Remove-Item $install -Recurse -Force }
+          & .\dist\TiAlloyStudio-Setup-x64-Offline.exe --quiet --install-dir "$install" --no-launch
+          if ($LASTEXITCODE -ne 0) { throw "Offline installer exited $LASTEXITCODE" }
+          if (-not (Test-Path "$install\TiAlloyStudio.exe")) { throw 'Installed application missing' }
+          if (-not (Test-Path "$install\engines\python\python.exe")) { throw 'Installed private Python runtime missing' }
+          if (-not (Test-Path "$install\engines\atomsk\atomsk.exe")) { throw 'Installed Atomsk missing' }
+          $expected='0389d2d967023c2a77fafc1e15ec0dfde28e0725b354672388ae2892a78edfda'
+          $installedManual=(Get-FileHash -Algorithm SHA256 "$install\TiAlloyStudio-Manual.docx").Hash.ToLowerInvariant()
+          if ($installedManual -ne $expected) { throw "Installed manual hash mismatch: $installedManual" }
+          reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' | Out-Host
+          if ($LASTEXITCODE -ne 0) { throw 'Windows uninstall registration missing' }
+          "TI_ALLOY_CLEAN_INSTALL=$install" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run installed native and mature-engine smoke tests
+        shell: pwsh
+        run: |
+          $install=$env:TI_ALLOY_CLEAN_INSTALL
+          & "$install\TiAlloyStudio.exe" --smoke-test-file "$env:RUNNER_TEMP\tialloy-installed-native.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Installed native smoke executable failed' }
+          $native=Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json" -Raw | ConvertFrom-Json
+          if ($native.result.status -ne 'PASS') { throw 'Installed native scientific smoke failed' }
+          & "$install\TiAlloyStudio.exe" --engine-smoke-file "$env:RUNNER_TEMP\tialloy-installed-engines.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Installed engine smoke executable failed' }
+          $engine=Get-Content "$env:RUNNER_TEMP\tialloy-installed-engines.json" -Raw | ConvertFrom-Json
+          if ($engine.status -ne 'PASS') { throw 'Installed mature-engine cross-check failed' }
+          Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json"
+          Get-Content "$env:RUNNER_TEMP\tialloy-installed-engines.json"
+
+      - name: Verify uninstall from clean installation
+        shell: pwsh
+        run: |
+          $install=$env:TI_ALLOY_CLEAN_INSTALL
+          & "$install\Uninstall.exe" --uninstall --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited $LASTEXITCODE" }
+          Start-Sleep -Seconds 6
+          if (Test-Path $install) { throw 'Installation directory still exists after uninstall' }
+          reg.exe QUERY 'HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio' *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Windows uninstall registration still exists after uninstall' }
+
       - name: Write release hashes
         shell: pwsh
         run: |
           $files = @(
+            'docs\TiAlloyStudio-Manual.docx',
             'internal\installer\payload\engine-bundle.zip',
             'internal\installer\payload\TiAlloyStudio.exe',
             'dist\TiAlloyStudio-Setup-x64-Offline.exe'
