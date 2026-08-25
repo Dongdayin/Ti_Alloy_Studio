@@ -68,9 +68,20 @@ jobs:
         shell: pwsh
         run: |
           $install=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-CleanInstall'
+          $diag=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-install-error.log'
+          Remove-Item $diag -Force -ErrorAction SilentlyContinue
           if (Test-Path $install) { Remove-Item $install -Recurse -Force }
           $proc=Start-Process -FilePath '.\dist\TiAlloyStudio-Setup-x64-Offline.exe' -ArgumentList @('--quiet','--install-dir',$install,'--no-launch') -Wait -PassThru
-          if ($proc.ExitCode -ne 0) { throw "Offline installer exited $($proc.ExitCode)" }
+          if ($proc.ExitCode -ne 0) {
+            if (Test-Path $diag) {
+              Write-Host '===== preserved installer diagnostic ====='
+              Get-Content $diag
+              Write-Host '===== end installer diagnostic ====='
+            } else {
+              Write-Host 'Installer did not create the expected preserved diagnostic file.'
+            }
+            throw "Offline installer exited $($proc.ExitCode)"
+          }
           if (-not (Test-Path "$install\TiAlloyStudio.exe")) { throw 'Installed application missing' }
           if (-not (Test-Path "$install\engines\python\python.exe")) { throw 'Installed private Python runtime missing' }
           if (-not (Test-Path "$install\engines\atomsk\atomsk.exe")) { throw 'Installed Atomsk missing' }
