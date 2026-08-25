@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -97,11 +98,11 @@ func structureSHA256(s model.Structure) string {
 
 func exportHashes(s model.Structure) map[string]string {
 	return map[string]string{
-		"poscar":  sha256Text(model.ExportPOSCAR(s, "Ti Alloy Studio provenance")),
-		"lammps":  sha256Text(model.ExportLAMMPS(s)),
-		"extxyz":  sha256Text(model.ExportExtXYZ(s)),
-		"xyz":     sha256Text(model.ExportXYZ(s)),
-		"cif":     sha256Text(model.ExportCIF(s)),
+		"poscar": sha256Text(model.ExportPOSCAR(s, "Ti Alloy Studio provenance")),
+		"lammps": sha256Text(model.ExportLAMMPS(s)),
+		"extxyz": sha256Text(model.ExportExtXYZ(s)),
+		"xyz":    sha256Text(model.ExportXYZ(s)),
+		"cif":    sha256Text(model.ExportCIF(s)),
 	}
 }
 
@@ -172,6 +173,52 @@ func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) {
 	p.manifest.UpdatedAt = now
 }
 
+func gsfeSeriesForRequest(req BuildRequest) model.GSFESeries {
+	if req.Phase == "beta" {
+		return model.BetaGSFE(req.ABeta, [3]int{req.NX, req.NY, req.NZ}, req.GSFESteps, 0.5)
+	}
+	return model.AlphaGSFE(req.GSFEPreset, req.AAlpha, req.CAlpha, [3]int{req.NX, req.NY, req.NZ}, req.GSFESteps, 0.5)
+}
+
+func enrichTrackedDiagnostics(req BuildRequest, out *BuildResponse) {
+	if out.Module != "gsfe" {
+		return
+	}
+	d := model.AnalyzeGSFESeries(gsfeSeriesForRequest(req))
+	out.Analysis["series_point_count"] = d.PointCount
+	out.Analysis["series_atom_count_consistent"] = d.AtomCountConsistent
+	out.Analysis["series_cell_consistent"] = d.CellConsistent
+	out.Analysis["series_pbc_consistent"] = d.PBCConsistent
+	out.Analysis["series_lambda_monotonic"] = d.LambdaMonotonic
+	out.Analysis["series_minimum_distance_angstrom"] = d.MinimumDistanceAngstrom
+	out.Analysis["fault_separation_angstrom"] = d.FaultSeparationAngstrom
+	out.Analysis["endpoint_lattice_equivalent"] = d.EndpointEquivalent
+
+	if d.AtomCountConsistent && d.CellConsistent && d.PBCConsistent {
+		addCheck(&out.Validation, "gsfe_series_topology", "PASS", "All GSFE points preserve atom count, simulation cell and periodic-boundary topology", float64(d.PointCount))
+	} else {
+		addCheck(&out.Validation, "gsfe_series_topology", "FAIL", "Atom count, cell or PBC changed within the GSFE series", float64(d.PointCount))
+	}
+	if d.LambdaMonotonic && math.Abs(d.LambdaStart) < 1e-12 && math.Abs(d.LambdaEnd-1) < 1e-12 {
+		addCheck(&out.Validation, "gsfe_lambda_path", "PASS", "GSFE displacement parameter is monotonic and spans λ = 0 to 1", d.LambdaEnd)
+	} else {
+		addCheck(&out.Validation, "gsfe_lambda_path", "FAIL", "GSFE displacement parameter must monotonically span λ = 0 to 1", d.LambdaEnd)
+	}
+	if d.EndpointEquivalent {
+		addCheck(&out.Validation, "gsfe_endpoint_equivalence", "PASS", "Preset full-slip endpoint is lattice-equivalent to the reference modulo PBC", 1)
+	} else {
+		addCheck(&out.Validation, "gsfe_endpoint_equivalence", "FAIL", "Preset full-slip endpoint is not lattice-equivalent to the reference; inspect slip path or supercell", 0)
+	}
+	if !math.IsNaN(d.MinimumDistanceAngstrom) && !math.IsInf(d.MinimumDistanceAngstrom, 0) && d.MinimumDistanceAngstrom > 1e-5 {
+		addCheck(&out.Validation, "gsfe_series_minimum_distance", "PASS", "Minimum interatomic distance over the complete rigid-shift series is finite and non-overlapping", d.MinimumDistanceAngstrom)
+	} else {
+		addCheck(&out.Validation, "gsfe_series_minimum_distance", "FAIL", "At least one GSFE displacement contains duplicate or numerically overlapping atoms", d.MinimumDistanceAngstrom)
+	}
+	if d.FaultSeparationAngstrom > 0 {
+		addCheck(&out.Validation, "gsfe_fault_separation", "PASS", "Geometric separation between periodic fault images is reported for thickness-convergence studies; no universal converged thickness is imposed", d.FaultSeparationAngstrom)
+	}
+}
+
 // BuildTracked is the user-facing build path. The pure Build method remains
 // useful for low-level scientific tests; GUI/API builds use this method so a
 // successful generation always appends a reproducibility record.
@@ -183,6 +230,13 @@ func (s *State) BuildTracked(req BuildRequest) (BuildResponse, error) {
 	s.mu.RLock()
 	normalized := s.CurrentRequest
 	s.mu.RUnlock()
+	enrichTrackedDiagnostics(normalized, &out)
+	// Replace the pure-build current response with the enriched user-facing
+	// response before provenance hashing/serialization.
+	s.mu.Lock()
+	s.Current = out
+	s.CurrentRequest = normalized
+	s.mu.Unlock()
 	recordTrackedBuild(s, normalized, out)
 	return out, nil
 }
