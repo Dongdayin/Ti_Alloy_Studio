@@ -3,8 +3,6 @@ name: Build R3 Offline Windows Installer
 on:
   workflow_dispatch:
   push:
-    branches:
-      - r3-offline
     tags:
       - 'r3-offline-*'
 
