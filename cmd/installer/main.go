@@ -77,7 +77,7 @@ func registerUninstall(dir string) error {
 	un := `"` + filepath.Join(dir, "Uninstall.exe") + `" --uninstall`
 	values := [][2]string{
 		{"DisplayName", product},
-		{"DisplayVersion", "0.1.4-phase1"},
+		{"DisplayVersion", "0.1.5-phase1-r4"},
 		{"Publisher", "Ti Alloy Studio"},
 		{"InstallLocation", dir},
 		{"UninstallString", un},
@@ -100,6 +100,7 @@ func registerUninstall(dir string) error {
 func unregisterUninstall() { _, _ = exec.Command("reg.exe", "DELETE", uninstallKey, "/f").CombinedOutput() }
 
 func installEngines(dir string) error {
+	progressSet(18, "Verifying bundled offline scientific engines")
 	zipPath := filepath.Join(dir, "engine-bundle.zip")
 	data, err := os.ReadFile(zipPath)
 	if err != nil {
@@ -113,21 +114,25 @@ func installEngines(dir string) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
+	progressSet(23, "Extracting offline scientific engine bundle")
 	if err = ps(`Expand-Archive -LiteralPath ` + psq(zipPath) + ` -DestinationPath ` + psq(tmp) + ` -Force`); err != nil {
 		return err
 	}
 	eng := filepath.Join(dir, "engines")
 	_ = os.RemoveAll(eng)
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", inst.OfflineEngineInstallScript(eng, tmp))
+	progressSet(28, "Preparing private scientific runtime")
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", inst.OfflineEngineInstallScriptWithProgress(eng, tmp, progressPath()))
 	out, err := cmd.CombinedOutput()
 	_ = os.WriteFile(filepath.Join(dir, "engine-install.log"), out, 0644)
 	if err != nil {
 		return fmt.Errorf("offline scientific engine installation failed: %w", err)
 	}
+	progressSet(84, "Bundled scientific engines installed")
 	return nil
 }
 
 func smoke(dir string) error {
+	progressSet(87, "Running TiModelCore scientific smoke test")
 	p := filepath.Join(dir, "smoke.json")
 	if err := exec.Command(filepath.Join(dir, "TiAlloyStudio.exe"), "--smoke-test-file", p).Run(); err != nil {
 		return fmt.Errorf("native scientific smoke executable failed: %w", err)
@@ -136,6 +141,7 @@ func smoke(dir string) error {
 	if err != nil || !inst.SmokePass(b) {
 		return fmt.Errorf("native scientific smoke failed")
 	}
+	progressSet(92, "Cross-checking bundled mature scientific engines")
 	e := filepath.Join(dir, "engine-smoke.json")
 	if err = exec.Command(filepath.Join(dir, "TiAlloyStudio.exe"), "--engine-smoke-file", e).Run(); err != nil {
 		return fmt.Errorf("mature-engine smoke executable failed: %w", err)
@@ -238,13 +244,20 @@ func run() int {
 		}
 	}
 
+	progress := startInstallProgress(*quiet)
+	activeInstallProgress = progress
+	progressSet(4, "Reading embedded offline payload")
 	_ = os.Remove(diagnosticPath())
 	payload, err := inst.PayloadFiles()
 	if err != nil {
+		progress.close(false)
+		activeInstallProgress = nil
 		notify(*quiet, "Installer payload error: "+err.Error())
 		return 1
 	}
+	progressSet(9, "Writing Ti Alloy Studio application files")
 	if err = inst.InstallPayloadTo(dir, payload); err == nil {
+		progressSet(14, "Preparing uninstaller")
 		err = copySelf(dir)
 	}
 	if err == nil {
@@ -254,9 +267,11 @@ func run() int {
 		err = smoke(dir)
 	}
 	if err == nil {
+		progressSet(96, "Creating desktop and Start Menu shortcuts")
 		err = shortcuts(dir)
 	}
 	if err == nil {
+		progressSet(98, "Registering Windows uninstall information")
 		err = registerUninstall(dir)
 	}
 	if err != nil {
@@ -264,10 +279,14 @@ func run() int {
 		removeShortcuts()
 		unregisterUninstall()
 		_ = os.RemoveAll(dir)
+		progress.close(false)
+		activeInstallProgress = nil
 		notify(*quiet, "Installation failed and was rolled back: "+err.Error())
 		return 1
 	}
 
+	progress.close(true)
+	activeInstallProgress = nil
 	notify(*quiet, "Installation completed offline. TiModelCore and all bundled scientific engines passed validation.")
 	if !*noLaunch {
 		if err = exec.Command("cmd.exe", "/C", "start", "", filepath.Join(dir, "TiAlloyStudio.exe")).Start(); err != nil {
