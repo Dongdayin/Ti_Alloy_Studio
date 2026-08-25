@@ -1,6 +1,9 @@
 package engines
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseToolPathLines(t *testing.T) {
 	raw := "python3|/usr/bin/python3\natomsk|/home/user/bin/atomsk\nmcsqs|\ncorrdump|/usr/local/bin/corrdump\n"
@@ -13,6 +16,16 @@ func TestParseToolPathLines(t *testing.T) {
 	}
 	if got["mcsqs"] != "" {
 		t.Fatalf("mcsqs should be unavailable, got %q", got["mcsqs"])
+	}
+}
+
+func TestWSLProbeAlwaysPrintsOneLinePerTool(t *testing.T) {
+	script := buildWSLProbeScript([]string{"atomsk", "mcsqs", "lmp_mpi"})
+	if strings.Count(script, "printf '%s|%s\\n'") != 3 {
+		t.Fatalf("probe must emit one newline-terminated record per tool: %q", script)
+	}
+	if !strings.Contains(script, "find \"$HOME\"") {
+		t.Fatalf("probe should fall back to a bounded HOME search for tools outside PATH: %q", script)
 	}
 }
 
