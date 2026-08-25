@@ -47,11 +47,14 @@ jobs:
       - name: Run Windows-native core smoke test before install
         shell: pwsh
         run: |
-          & .\internal\installer\payload\TiAlloyStudio.exe --smoke-test-file "$env:RUNNER_TEMP\tialloy-preinstall-native.json"
-          if ($LASTEXITCODE -ne 0) { throw 'Windows pre-install native smoke executable failed' }
-          $native=Get-Content "$env:RUNNER_TEMP\tialloy-preinstall-native.json" -Raw | ConvertFrom-Json
+          $smoke="$env:RUNNER_TEMP\tialloy-preinstall-native.json"
+          & .\internal\installer\payload\TiAlloyStudio.exe --smoke-test-file $smoke
+          $code=$LASTEXITCODE
+          if (Test-Path $smoke) { Get-Content $smoke }
+          else { Write-Host 'Smoke JSON file was not created.' }
+          if ($code -ne 0) { throw "Windows pre-install native smoke executable failed with exit $code" }
+          $native=Get-Content $smoke -Raw | ConvertFrom-Json
           if ($native.result.status -ne 'PASS') { throw 'Windows pre-install native smoke failed' }
-          Get-Content "$env:RUNNER_TEMP\tialloy-preinstall-native.json"
 
       - name: Verify payload is offline and complete
         shell: pwsh
@@ -83,16 +86,20 @@ jobs:
         shell: pwsh
         run: |
           $install=$env:TI_ALLOY_CLEAN_INSTALL
-          & "$install\TiAlloyStudio.exe" --smoke-test-file "$env:RUNNER_TEMP\tialloy-installed-native.json"
-          if ($LASTEXITCODE -ne 0) { throw 'Installed native smoke executable failed' }
-          $native=Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json" -Raw | ConvertFrom-Json
+          $nativePath="$env:RUNNER_TEMP\tialloy-installed-native.json"
+          & "$install\TiAlloyStudio.exe" --smoke-test-file $nativePath
+          $nativeCode=$LASTEXITCODE
+          if (Test-Path $nativePath) { Get-Content $nativePath }
+          if ($nativeCode -ne 0) { throw "Installed native smoke executable failed with exit $nativeCode" }
+          $native=Get-Content $nativePath -Raw | ConvertFrom-Json
           if ($native.result.status -ne 'PASS') { throw 'Installed native scientific smoke failed' }
-          & "$install\TiAlloyStudio.exe" --engine-smoke-file "$env:RUNNER_TEMP\tialloy-installed-engines.json"
-          if ($LASTEXITCODE -ne 0) { throw 'Installed engine smoke executable failed' }
-          $engine=Get-Content "$env:RUNNER_TEMP\tialloy-installed-engines.json" -Raw | ConvertFrom-Json
+          $enginePath="$env:RUNNER_TEMP\tialloy-installed-engines.json"
+          & "$install\TiAlloyStudio.exe" --engine-smoke-file $enginePath
+          $engineCode=$LASTEXITCODE
+          if (Test-Path $enginePath) { Get-Content $enginePath }
+          if ($engineCode -ne 0) { throw "Installed engine smoke executable failed with exit $engineCode" }
+          $engine=Get-Content $enginePath -Raw | ConvertFrom-Json
           if ($engine.status -ne 'PASS') { throw 'Installed mature-engine cross-check failed' }
-          Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json"
-          Get-Content "$env:RUNNER_TEMP\tialloy-installed-engines.json"
 
       - name: Verify uninstall from clean installation
         shell: pwsh
