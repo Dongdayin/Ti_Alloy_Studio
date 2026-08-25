@@ -1,13 +1,58 @@
 (() => {
   'use strict';
 
+  // Interface topology is a physical model choice, not a visual option.
+  // Use the already-defined surface_preset request field as a backward-compatible
+  // transport field for interface-only requests; the app core ignores it elsewhere.
+  const interfaceControls = document.getElementById('interfaceControls');
+  let interfaceTopology = null;
+  if (interfaceControls) {
+    const label = document.createElement('label');
+    label.textContent = 'Interface topology';
+    interfaceTopology = document.createElement('select');
+    interfaceTopology.id = 'interfaceTopology';
+    interfaceTopology.innerHTML =
+      '<option value="interface_periodic_bicrystal">Periodic bicrystal · recommended for bulk interface/VASP</option>' +
+      '<option value="interface_single_slab">Single-interface slab + vacuum · surface/interface studies</option>';
+    label.appendChild(interfaceTopology);
+    interfaceControls.insertBefore(label, interfaceControls.firstChild);
+
+    const note = document.createElement('p');
+    note.className = 'micro';
+    note.textContent = 'Periodic bicrystal contains two α/β interfaces and no free surface. Single-interface slab contains one α/β interface plus two vacuum surfaces. Do not mix their energies.';
+    label.insertAdjacentElement('afterend', note);
+
+    const vacuum = document.getElementById('interfaceVacuum');
+    const vacuumLabel = vacuum && vacuum.closest('label');
+    const syncTopologyUI = () => {
+      if (vacuumLabel) vacuumLabel.style.display = interfaceTopology.value === 'interface_single_slab' ? '' : 'none';
+    };
+    interfaceTopology.addEventListener('change', syncTopologyUI);
+    syncTopologyUI();
+  }
+
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url === '/api/build' && init && typeof init.body === 'string' && interfaceTopology) {
+      try {
+        const body = JSON.parse(init.body);
+        if (body.module === 'interface') {
+          body.surface_preset = interfaceTopology.value;
+          init = { ...init, body: JSON.stringify(body) };
+        }
+      } catch (_) {}
+    }
+    return nativeFetch(input, init);
+  };
+
   const exitBtn = document.getElementById('exitBtn');
   if (exitBtn) {
     exitBtn.onclick = async () => {
       exitBtn.disabled = true;
       exitBtn.textContent = 'Exiting…';
       try {
-        await fetch('/api/exit', { method: 'POST', cache: 'no-store', keepalive: true });
+        await window.fetch('/api/exit', { method: 'POST', cache: 'no-store', keepalive: true });
       } catch (_) {
         // The server intentionally closes during Exit; a rejected fetch is not an application error.
       }
