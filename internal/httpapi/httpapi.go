@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"tialloystudio/internal/app"
+	"tialloystudio/internal/engines"
 )
 
 type api struct{ state *app.State }
@@ -103,7 +104,7 @@ func (a *api) environment(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, app.EnvironmentReport())
+	writeJSON(w, http.StatusOK, engines.DetectEnvironment(r.URL.Query().Get("distro")))
 }
 
 func (a *api) project(w http.ResponseWriter, r *http.Request) {
