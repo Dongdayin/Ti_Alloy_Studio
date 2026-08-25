@@ -77,7 +77,7 @@ func registerUninstall(dir string) error {
 	un := `"` + filepath.Join(dir, "Uninstall.exe") + `" --uninstall`
 	values := [][2]string{
 		{"DisplayName", product},
-		{"DisplayVersion", "0.1.5-phase1-r4"},
+		{"DisplayVersion", "0.1.6-phase1-r5"},
 		{"Publisher", "Ti Alloy Studio"},
 		{"InstallLocation", dir},
 		{"UninstallString", un},
@@ -186,29 +186,14 @@ func cleanupCommandSpec(script string) (string, []string) {
 	return "cmd.exe", []string{"/D", "/Q", "/C", script}
 }
 
-func removeInstalledPayloadExceptSelf(dir, self string) error {
-	selfAbs, err := filepath.Abs(self)
-	if err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		path := filepath.Join(dir, entry.Name())
-		pathAbs, err := filepath.Abs(path)
-		if err != nil {
-			return err
-		}
-		if strings.EqualFold(filepath.Clean(pathAbs), filepath.Clean(selfAbs)) {
-			continue
-		}
-		if err := os.RemoveAll(path); err != nil {
-			return fmt.Errorf("remove installed payload %s: %w", path, err)
-		}
-	}
-	return nil
+func uninstallCleanupScript(dir string) string {
+	// The cleanup script lives outside the installation directory.  It waits
+	// until the uninstaller process has returned, then uses Windows' native
+	// rmdir implementation to remove the entire scientific runtime at once.
+	// This avoids os.RemoveAll walking tens of thousands of Python files while
+	// the user waits for Uninstall.exe to exit.
+	target := strings.ReplaceAll(dir, "%", "%%")
+	return fmt.Sprintf("@echo off\r\nsetlocal\r\nfor /L %%%%I in (1,1,120) do (\r\n  ping -n 2 127.0.0.1 >nul\r\n  rmdir /s /q \"%s\" >nul 2>nul\r\n  if not exist \"%s\" goto removed\r\n)\r\nexit /b 1\r\n:removed\r\ndel /f /q \"%%~f0\" >nul 2>nul\r\nexit /b 0\r\n", target, target)
 }
 
 func uninstall(quiet bool) int {
@@ -224,23 +209,19 @@ func uninstall(quiet bool) int {
 	removeShortcuts()
 	unregisterUninstall()
 
-	// Delete the large scientific payload synchronously while this process is
-	// still alive.  The asynchronous helper then has only one locked file to
-	// remove, which prevents Windows process-tree waiting from turning a normal
-	// uninstall into a long-running recursive deletion job.
-	if err = removeInstalledPayloadExceptSelf(dir, exe); err != nil {
-		notify(quiet, "Cannot remove installed files: "+err.Error())
-		return 1
-	}
-
+	// Do not synchronously recurse through the bundled Python environment.
+	// Spawn a cleanup script from the system temp directory and return.  Once
+	// this process releases Uninstall.exe, the helper removes the whole install
+	// tree and then deletes itself.
 	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("TiAlloyStudio-remove-%d.cmd", time.Now().UnixNano()))
-	script := fmt.Sprintf("@echo off\r\nfor /L %%%%I in (1,1,20) do (\r\n  del /f /q \"%s\" >nul 2>nul\r\n  if not exist \"%s\" goto removed\r\n  ping -n 2 127.0.0.1 >nul\r\n)\r\nexit /b 1\r\n:removed\r\nrmdir \"%s\" >nul 2>nul\r\ndel /f /q \"%%%%~f0\"\r\n", exe, exe, dir)
-	if err = os.WriteFile(tmp, []byte(script), 0644); err != nil {
+	if err = os.WriteFile(tmp, []byte(uninstallCleanupScript(dir)), 0644); err != nil {
 		notify(quiet, "Cannot create uninstall cleanup: "+err.Error())
 		return 1
 	}
 	name, args := cleanupCommandSpec(tmp)
-	if err = exec.Command(name, args...).Start(); err != nil {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = os.TempDir()
+	if err = cmd.Start(); err != nil {
 		notify(quiet, "Cannot start uninstall cleanup: "+err.Error())
 		return 1
 	}
