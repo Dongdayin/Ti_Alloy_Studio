@@ -43,7 +43,7 @@ func TestReferenceNearestNeighborMetadataTracksParentCrystal(t *testing.T) {
 func TestDefectPeriodicImageDistanceIsRecorded(t *testing.T) {
 	host := BuildAlphaTi(2.951, 4.684).Repeat(4, 4, 3)
 	want := ShortestPeriodicTranslation(host)
-	if !math.IsFinite(want) || want <= 0 {
+	if math.IsNaN(want) || math.IsInf(want, 0) || want <= 0 {
 		t.Fatalf("invalid periodic translation distance: %g", want)
 	}
 	v, err := CreateVacancy(host, 0)
