@@ -2,3 +2,6 @@ ase==3.29.0
 spglib==2.7.0
 pymatgen-core==2026.7.31
 atomman==1.4.11
+# AtomMan 1.4.11 still imports BasePotentialLAMMPS from the 0.3.x potentials API.
+# Pin the contemporary 0.3.8 release rather than allowing the incompatible 0.4.x API.
+potentials==0.3.8
