@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -47,16 +50,30 @@ func notify(quiet bool, s string) {
 	_ = ps(`Add-Type -AssemblyName PresentationFramework;[System.Windows.MessageBox]::Show(` + psq(s) + `,` + psq(product) + `)|Out-Null`)
 }
 
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
 func copySelf(dir string) error {
 	p, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, "Uninstall.exe"), b, 0644)
+	return copyFile(p, filepath.Join(dir, "Uninstall.exe"))
 }
 
 func shortcuts(dir string) error {
@@ -77,7 +94,7 @@ func registerUninstall(dir string) error {
 	un := `"` + filepath.Join(dir, "Uninstall.exe") + `" --uninstall`
 	values := [][2]string{
 		{"DisplayName", product},
-		{"DisplayVersion", "0.1.6-phase1-r5"},
+		{"DisplayVersion", "0.1.7-phase1-r6"},
 		{"Publisher", "Ti Alloy Studio"},
 		{"InstallLocation", dir},
 		{"UninstallString", un},
@@ -182,18 +199,70 @@ func preserveFailureDiagnostic(dir string, installErr error) {
 	_ = os.WriteFile(diagnosticPath(), []byte(b.String()), 0644)
 }
 
-func cleanupCommandSpec(script string) (string, []string) {
-	return "cmd.exe", []string{"/D", "/Q", "/C", script}
+func cleanupHelperPath(temp string, stamp int64) string {
+	return filepath.Join(temp, fmt.Sprintf("TiAlloyStudio-uninstall-helper-%d.exe", stamp))
 }
 
-func uninstallCleanupScript(dir string) string {
-	// The cleanup script lives outside the installation directory.  It waits
-	// until the uninstaller process has returned, then uses Windows' native
-	// rmdir implementation to remove the entire scientific runtime at once.
-	// This avoids os.RemoveAll walking tens of thousands of Python files while
-	// the user waits for Uninstall.exe to exit.
-	target := strings.ReplaceAll(dir, "%", "%%")
-	return fmt.Sprintf("@echo off\r\nsetlocal\r\nfor /L %%%%I in (1,1,120) do (\r\n  ping -n 2 127.0.0.1 >nul\r\n  rmdir /s /q \"%s\" >nul 2>nul\r\n  if not exist \"%s\" goto removed\r\n)\r\nexit /b 1\r\n:removed\r\ndel /f /q \"%%~f0\" >nul 2>nul\r\nexit /b 0\r\n", target, target)
+func cleanupHelperArgs(dir string, parentPID int, quiet bool) []string {
+	args := []string{"--cleanup-install-dir", dir, "--parent-pid", strconv.Itoa(parentPID)}
+	if quiet {
+		args = append(args, "--quiet")
+	}
+	return args
+}
+
+func isCleanupMode(target string) bool { return strings.TrimSpace(target) != "" }
+
+func removeInstallTree(dir string) error {
+	var lastErr error
+	for attempt := 1; attempt <= 4; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		cmd := exec.CommandContext(ctx, "cmd.exe", "/D", "/Q", "/C", "rmdir", "/S", "/Q", dir)
+		err := cmd.Run()
+		cancel()
+		if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+			return nil
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			lastErr = fmt.Errorf("remove attempt %d timed out", attempt)
+		} else if err != nil {
+			lastErr = fmt.Errorf("remove attempt %d failed: %w", attempt, err)
+		} else {
+			lastErr = fmt.Errorf("remove attempt %d returned but directory still exists", attempt)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return lastErr
+}
+
+func scheduleHelperSelfDelete() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	quoted := `"` + strings.ReplaceAll(exe, `"`, `""`) + `"`
+	script := "ping -n 2 127.0.0.1 >nul & del /f /q " + quoted + " >nul 2>nul"
+	cmd := exec.Command("cmd.exe", "/D", "/Q", "/C", script)
+	cmd.Dir = os.TempDir()
+	_ = cmd.Start()
+}
+
+func cleanupInstalledTree(dir string, parentPID int, quiet bool) int {
+	if strings.TrimSpace(dir) == "" {
+		return 2
+	}
+	// Stage 1 exits immediately after starting this helper. A short grace period
+	// releases the running Uninstall.exe before deletion starts. parentPID is
+	// retained in the command line for diagnostics and provenance.
+	if parentPID > 0 {
+		time.Sleep(500 * time.Millisecond)
+	}
+	if err := removeInstallTree(dir); err != nil {
+		notify(quiet, "Uninstall cleanup failed: "+err.Error())
+		return 1
+	}
+	scheduleHelperSelfDelete()
+	return 0
 }
 
 func uninstall(quiet bool) int {
@@ -209,20 +278,21 @@ func uninstall(quiet bool) int {
 	removeShortcuts()
 	unregisterUninstall()
 
-	// Do not synchronously recurse through the bundled Python environment.
-	// Spawn a cleanup script from the system temp directory and return.  Once
-	// this process releases Uninstall.exe, the helper removes the whole install
-	// tree and then deletes itself.
-	tmp := filepath.Join(os.TempDir(), fmt.Sprintf("TiAlloyStudio-remove-%d.cmd", time.Now().UnixNano()))
-	if err = os.WriteFile(tmp, []byte(uninstallCleanupScript(dir)), 0644); err != nil {
-		notify(quiet, "Cannot create uninstall cleanup: "+err.Error())
+	// Stage 1 never deletes the directory that contains the running executable.
+	// Instead it copies this executable to %TEMP%, launches it in cleanup mode,
+	// and returns. Stage 2 therefore runs outside the installation tree and can
+	// remove the private Python runtime, Atomsk, application, manual and itself
+	// without a parent/child deletion cycle.
+	helper := cleanupHelperPath(os.TempDir(), time.Now().UnixNano())
+	if err = copyFile(exe, helper); err != nil {
+		notify(quiet, "Cannot prepare uninstall helper: "+err.Error())
 		return 1
 	}
-	name, args := cleanupCommandSpec(tmp)
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command(helper, cleanupHelperArgs(dir, os.Getpid(), true)...)
 	cmd.Dir = os.TempDir()
 	if err = cmd.Start(); err != nil {
-		notify(quiet, "Cannot start uninstall cleanup: "+err.Error())
+		_ = os.Remove(helper)
+		notify(quiet, "Cannot start uninstall helper: "+err.Error())
 		return 1
 	}
 	return 0
@@ -233,10 +303,15 @@ func run() int {
 	quiet := flag.Bool("quiet", false, "suppress GUI messages for automated verification")
 	noLaunch := flag.Bool("no-launch", false, "do not launch application after installation")
 	idir := flag.String("install-dir", "", "install directory")
+	cleanupDir := flag.String("cleanup-install-dir", "", "internal: stage-2 uninstall target")
+	parentPID := flag.Int("parent-pid", 0, "internal: stage-1 uninstaller process id")
 	flag.Parse()
 
 	if runtime.GOOS != "windows" {
 		return 2
+	}
+	if isCleanupMode(*cleanupDir) {
+		return cleanupInstalledTree(*cleanupDir, *parentPID, *quiet)
 	}
 	if *un {
 		return uninstall(*quiet)
