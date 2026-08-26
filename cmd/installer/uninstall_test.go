@@ -1,28 +1,38 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestUninstallCleanupScriptDeletesWholeInstallDirectoryAsynchronously(t *testing.T) {
-	dir := `C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio`
-	script := uninstallCleanupScript(dir)
-	for _, want := range []string{
-		`ping -n 2 127.0.0.1`,
-		`rmdir /s /q "C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio"`,
-		`if not exist "C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio" goto removed`,
-		`del /f /q "%~f0"`,
-	} {
-		if !strings.Contains(script, want) {
-			t.Fatalf("cleanup script missing %q:\n%s", want, script)
+func TestCleanupHelperPathLivesOutsideInstallDirectory(t *testing.T) {
+	installDir := `C:\Users\researcher\AppData\Local\Programs\TiAlloyStudio`
+	helper := cleanupHelperPath(`C:\Users\researcher\AppData\Local\Temp`, 12345)
+	if strings.HasPrefix(strings.ToLower(helper), strings.ToLower(installDir)) {
+		t.Fatalf("cleanup helper must live outside install directory: %s", helper)
+	}
+	if filepath.Base(helper) != "TiAlloyStudio-uninstall-helper-12345.exe" {
+		t.Fatalf("unexpected helper filename: %s", helper)
+	}
+}
+
+func TestCleanupHelperArgsCarryInstallDirAndParentPID(t *testing.T) {
+	dir := `D:\TiAlloyStudio`
+	args := cleanupHelperArgs(dir, 4242, true)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"--cleanup-install-dir", dir, "--parent-pid", "4242", "--quiet"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("cleanup helper args missing %q: %v", want, args)
 		}
 	}
 }
 
-func TestUninstallCleanupScriptDoesNotDeletePayloadSynchronously(t *testing.T) {
-	script := uninstallCleanupScript(`D:\TiAlloyStudio`)
-	if strings.Contains(script, "Uninstall.exe") {
-		t.Fatalf("cleanup should remove the install directory generically after parent exit, not special-case a running uninstaller: %s", script)
+func TestCleanupModeRecognizesExplicitTarget(t *testing.T) {
+	if !isCleanupMode(`D:\TiAlloyStudio`) {
+		t.Fatal("non-empty cleanup target must enable stage-2 cleanup mode")
+	}
+	if isCleanupMode("") {
+		t.Fatal("empty cleanup target must not enable stage-2 cleanup mode")
 	}
 }
