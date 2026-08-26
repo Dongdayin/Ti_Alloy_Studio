@@ -1,25 +1,18 @@
 package main
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestCleanupCommandSpecUsesBoundedCmdShellWithoutStart(t *testing.T) {
-	script := `C:\Temp\TiAlloyStudio-remove.cmd`
-	exe, args := cleanupCommandSpec(script)
-
-	if exe != "cmd.exe" {
-		t.Fatalf("cleanup executable = %q, want cmd.exe", exe)
+func TestTwoStageHelperDoesNotUseLegacyBatchLauncher(t *testing.T) {
+	helper := cleanupHelperPath(`C:\Temp`, 99)
+	if !strings.HasSuffix(strings.ToLower(helper), `tialloystudio-uninstall-helper-99.exe`) {
+		t.Fatalf("unexpected helper path: %s", helper)
 	}
-	want := []string{"/D", "/Q", "/C", script}
-	if !reflect.DeepEqual(args, want) {
-		t.Fatalf("cleanup args = %#v, want %#v", args, want)
-	}
-	for _, arg := range args {
-		if strings.EqualFold(arg, "start") {
-			t.Fatalf("cleanup launcher must not use START because START + .cmd can leave an orphan command shell: %#v", args)
-		}
+	args := cleanupHelperArgs(`D:\TiAlloyStudio`, 321, true)
+	joined := strings.Join(args, " ")
+	if strings.Contains(strings.ToLower(joined), ".cmd") || strings.Contains(strings.ToLower(joined), " start ") {
+		t.Fatalf("two-stage helper must not use legacy batch/start launcher: %v", args)
 	}
 }
