@@ -19,13 +19,9 @@ $Bundle = Join-Path $Root 'internal\installer\payload\engine-bundle.zip'
 if (-not (Test-Path $Bundle)) { throw 'engine-bundle.zip was not generated' }
 if ((Get-Item $Bundle).Length -lt 50MB) { throw 'engine-bundle.zip is suspiciously small; refusing to build an offline installer' }
 $RequiredEntries = @(
-  'python-3.11.9-amd64.exe',
+  'python-runtime.zip',
   'atomsk/atomsk.exe',
-  'requirements-offline.txt',
-  'wheelhouse/ase-3.29.0-py3-none-any.whl',
-  'wheelhouse/spglib-2.7.0-cp311-cp311-win_amd64.whl',
-  'wheelhouse/pymatgen_core-2026.7.31-cp311-cp311-win_amd64.whl',
-  'wheelhouse/atomman-1.4.11-cp311-cp311-win_amd64.whl'
+  'requirements-offline.txt'
 )
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Zip = [System.IO.Compression.ZipFile]::OpenRead($Bundle)
@@ -33,6 +29,21 @@ try {
   $Names = @($Zip.Entries | ForEach-Object { $_.FullName.Replace('\\','/') })
   foreach ($Entry in $RequiredEntries) {
     if ($Names -notcontains $Entry) { throw "Offline bundle missing required entry: $Entry" }
+  }
+  $RuntimeEntry = $Zip.GetEntry('python-runtime.zip')
+  $RuntimeBytes = New-Object System.IO.MemoryStream
+  $RuntimeStream = $RuntimeEntry.Open()
+  try { $RuntimeStream.CopyTo($RuntimeBytes) } finally { $RuntimeStream.Dispose() }
+  $RuntimeBytes.Position = 0
+  $RuntimeZip = [System.IO.Compression.ZipArchive]::new($RuntimeBytes, [System.IO.Compression.ZipArchiveMode]::Read, $false)
+  try {
+    $RuntimeNames = @($RuntimeZip.Entries | ForEach-Object { $_.FullName.Replace('\','/') })
+    foreach ($Entry in @('python.exe','python311.dll','python311._pth','Lib/site-packages/ase/__init__.py')) {
+      if ($RuntimeNames -notcontains $Entry) { throw "App-local Python runtime missing required entry: $Entry" }
+    }
+  } finally {
+    $RuntimeZip.Dispose()
+    $RuntimeBytes.Dispose()
   }
 } finally { $Zip.Dispose() }
 

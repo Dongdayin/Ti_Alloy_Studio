@@ -2,7 +2,7 @@
 
 Windows-first titanium-alloy atomistic modelling, validation, visualization and export workbench.
 
-The `r3-offline` branch builds a **fully offline Windows x64 installer**. Release construction downloads and pins the managed scientific engines on the GitHub Windows runner, proves that the Python wheelhouse can be installed with `--no-index`, then embeds the resulting engine bundle into the final installer.
+The `r3-offline` branch builds a **fully offline Windows x64 installer**. Release construction downloads and pins the managed scientific engines on the GitHub Windows runner, proves that the Python wheelhouse can be installed with `--no-index`, preinstalls it into an application-local CPython runtime, then embeds that runtime in the final installer. End-user installation only extracts verified private files; it never invokes the system Python installer or pip.
 
 End users install one package and do not configure Python, Conda, WSL, Atomsk or PATH.
 

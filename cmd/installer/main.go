@@ -94,7 +94,7 @@ func registerUninstall(dir string) error {
 	un := `"` + filepath.Join(dir, "Uninstall.exe") + `" --uninstall`
 	values := [][2]string{
 		{"DisplayName", product},
-		{"DisplayVersion", "0.1.7-phase1-r6"},
+		{"DisplayVersion", "0.1.8-phase1-r7"},
 		{"Publisher", "Ti Alloy Studio"},
 		{"InstallLocation", dir},
 		{"UninstallString", un},
@@ -114,7 +114,9 @@ func registerUninstall(dir string) error {
 	return nil
 }
 
-func unregisterUninstall() { _, _ = exec.Command("reg.exe", "DELETE", uninstallKey, "/f").CombinedOutput() }
+func unregisterUninstall() {
+	_, _ = exec.Command("reg.exe", "DELETE", uninstallKey, "/f").CombinedOutput()
+}
 
 func installEngines(dir string) error {
 	progressSet(18, "Verifying bundled offline scientific engines")
@@ -126,24 +128,14 @@ func installEngines(dir string) error {
 	if err = inst.VerifyOfflineEngineBundle(data); err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp("", "tialloy-bundle-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	progressSet(23, "Extracting offline scientific engine bundle")
-	if err = ps(`Expand-Archive -LiteralPath ` + psq(zipPath) + ` -DestinationPath ` + psq(tmp) + ` -Force`); err != nil {
-		return err
-	}
 	eng := filepath.Join(dir, "engines")
 	_ = os.RemoveAll(eng)
-	progressSet(28, "Preparing private scientific runtime")
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", inst.OfflineEngineInstallScriptWithProgress(eng, tmp, progressPath()))
-	out, err := cmd.CombinedOutput()
-	_ = os.WriteFile(filepath.Join(dir, "engine-install.log"), out, 0644)
-	if err != nil {
-		return fmt.Errorf("offline scientific engine installation failed: %w", err)
+	progressSet(32, "Extracting application-local scientific runtime")
+	if err = inst.InstallOfflineEngines(eng, data); err != nil {
+		_ = os.WriteFile(filepath.Join(dir, "engine-install.log"), []byte(err.Error()+"\r\n"), 0644)
+		return fmt.Errorf("offline scientific engine deployment failed: %w", err)
 	}
+	_ = os.WriteFile(filepath.Join(dir, "engine-install.log"), []byte("application-local Python runtime and Atomsk extracted successfully\r\n"), 0644)
 	progressSet(84, "Bundled scientific engines installed")
 	return nil
 }

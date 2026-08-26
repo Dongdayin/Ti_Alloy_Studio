@@ -64,6 +64,21 @@ jobs:
             throw 'End-user installer source contains forbidden online-install behavior'
           }
 
+      - name: Seed the pre-existing CPython state that caused the field failure
+        shell: pwsh
+        run: |
+          $setup=Join-Path $env:RUNNER_TEMP 'python-3.11.9-amd64.exe'
+          $existing=Join-Path $env:RUNNER_TEMP 'Existing-Python-3.11.9'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile $setup
+          $args=@('/quiet','InstallAllUsers=0',("TargetDir=$existing"),'Include_pip=0','Include_launcher=0','InstallLauncherAllUsers=0','AssociateFiles=0','Shortcuts=0','PrependPath=0','Include_doc=0','Include_test=0','Include_tcltk=0')
+          $proc=Start-Process -FilePath $setup -ArgumentList $args -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Conflicting CPython seed failed with exit $($proc.ExitCode)" }
+          if (-not (Test-Path "$existing\python.exe")) { throw 'Conflicting CPython seed did not create python.exe' }
+          $before=(Get-FileHash -Algorithm SHA256 "$existing\python.exe").Hash.ToLowerInvariant()
+          "TI_ALLOY_EXISTING_PYTHON=$existing" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TI_ALLOY_EXISTING_PYTHON_HASH=$before" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "pre-existing-python-regression-state-PASS path=$existing sha256=$before"
+
       - name: Clean-install final offline installer
         shell: pwsh
         run: |
@@ -85,6 +100,9 @@ jobs:
           if (-not (Test-Path "$install\TiAlloyStudio.exe")) { throw 'Installed application missing' }
           if (-not (Test-Path "$install\engines\python\python.exe")) { throw 'Installed private Python runtime missing' }
           if (-not (Test-Path "$install\engines\atomsk\atomsk.exe")) { throw 'Installed Atomsk missing' }
+          if (-not (Test-Path "$env:TI_ALLOY_EXISTING_PYTHON\python.exe")) { throw 'App installation damaged the pre-existing Python runtime' }
+          $existingAfter=(Get-FileHash -Algorithm SHA256 "$env:TI_ALLOY_EXISTING_PYTHON\python.exe").Hash.ToLowerInvariant()
+          if ($existingAfter -ne $env:TI_ALLOY_EXISTING_PYTHON_HASH) { throw 'App installation modified the pre-existing Python runtime' }
           $expected='0389d2d967023c2a77fafc1e15ec0dfde28e0725b354672388ae2892a78edfda'
           $installedManual=(Get-FileHash -Algorithm SHA256 "$install\TiAlloyStudio-Manual.docx").Hash.ToLowerInvariant()
           if ($installedManual -ne $expected) { throw "Installed manual hash mismatch: $installedManual" }

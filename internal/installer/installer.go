@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -67,44 +68,128 @@ func VerifyOfflineEngineBundle(data []byte) error {
 	if err != nil {
 		return fmt.Errorf("invalid offline engine bundle: %w", err)
 	}
-	found := map[string]int64{}
+	found := map[string]*zip.File{}
 	for _, f := range zr.File {
-		found[strings.ReplaceAll(f.Name, `\`, `/`)] = int64(f.UncompressedSize64)
+		found[strings.ReplaceAll(f.Name, `\`, `/`)] = f
 	}
-	required := []string{
-		"python-3.11.9-amd64.exe",
-		"atomsk/atomsk.exe",
-		"requirements-offline.txt",
-		"wheelhouse/ase-3.29.0-py3-none-any.whl",
-		"wheelhouse/spglib-2.7.0-cp311-cp311-win_amd64.whl",
-		"wheelhouse/pymatgen_core-2026.7.31-cp311-cp311-win_amd64.whl",
-		"wheelhouse/atomman-1.4.11-cp311-cp311-win_amd64.whl",
-	}
+	required := []string{"python-runtime.zip", "atomsk/atomsk.exe"}
 	for _, n := range required {
-		if found[n] < 1 {
+		if found[n] == nil || found[n].UncompressedSize64 < 1 {
 			return fmt.Errorf("offline engine bundle missing required artifact %s", n)
+		}
+	}
+	runtimeData, err := readZipFile(found["python-runtime.zip"])
+	if err != nil {
+		return fmt.Errorf("read private Python runtime: %w", err)
+	}
+	runtimeZip, err := zip.NewReader(bytes.NewReader(runtimeData), int64(len(runtimeData)))
+	if err != nil {
+		return fmt.Errorf("invalid private Python runtime: %w", err)
+	}
+	runtimeFiles := map[string]uint64{}
+	for _, f := range runtimeZip.File {
+		runtimeFiles[strings.ReplaceAll(f.Name, `\`, `/`)] = f.UncompressedSize64
+	}
+	for _, n := range []string{"python.exe", "python311.dll", "python311._pth", "Lib/site-packages/ase/__init__.py"} {
+		if runtimeFiles[n] < 1 {
+			return fmt.Errorf("private Python runtime missing required artifact %s", n)
 		}
 	}
 	return nil
 }
 
-func OfflineEngineInstallScript(root, bundle string) string {
-	return OfflineEngineInstallScriptWithProgress(root, bundle, "")
+func readZipFile(f *zip.File) ([]byte, error) {
+	r, err := f.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
 }
 
-func OfflineEngineInstallScriptWithProgress(root, bundle, progressPath string) string {
-	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-	progress := ""
-	if strings.TrimSpace(progressPath) != "" {
-		progress = `$progress=` + q(progressPath) + `;function Report([int]$pct,[string]$msg){Set-Content -LiteralPath $progress -Value ($pct.ToString()+'|'+$msg) -Encoding UTF8};`
-	} else {
-		progress = `function Report([int]$pct,[string]$msg){};`
+func safeZipDestination(root, name string) (string, error) {
+	cleanName := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(name, `\`, `/`)))
+	if cleanName == "." || filepath.IsAbs(cleanName) || cleanName == ".." || strings.HasPrefix(cleanName, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("unsafe archive path %q", name)
 	}
-	return `$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';` + progress +
-		`$root=` + q(root) + `;$bundle=` + q(bundle) + `;New-Item -ItemType Directory -Force -Path $root|Out-Null;` +
-		`$pySetup=Join-Path $bundle 'python-3.11.9-amd64.exe';$req=Join-Path $bundle 'requirements-offline.txt';$wh=Join-Path $bundle 'wheelhouse';$atomskSource=Join-Path $bundle 'atomsk\atomsk.exe';foreach($p in @($pySetup,$req,$wh,$atomskSource)){if(-not(Test-Path -LiteralPath $p)){throw ('Offline asset missing: '+$p)}};` +
-		`Report 32 'Installing private Python runtime';$py=Join-Path $root 'python';$args=@('/quiet','InstallAllUsers=0',('TargetDir='+$py),'Include_pip=1','Include_launcher=0','InstallLauncherAllUsers=0','AssociateFiles=0','Shortcuts=0','PrependPath=0','Include_doc=0','Include_test=0','Include_tcltk=0');$p=Start-Process -FilePath $pySetup -ArgumentList $args -Wait -PassThru;if($p.ExitCode -ne 0){throw ('Private Python failed: '+$p.ExitCode)};` +
-		`Report 48 'Installing bundled scientific Python packages';$python=Join-Path $py 'python.exe';& $python -m pip install --disable-pip-version-check --no-index --find-links $wh -r $req;if($LASTEXITCODE -ne 0){throw 'Offline wheels failed'};` +
-		`Report 70 'Validating ASE, spglib, pymatgen and AtomMan';& $python -c "import ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('science-ok')";if($LASTEXITCODE -ne 0){throw 'Python validation failed'};` +
-		`Report 80 'Installing bundled Atomsk';$ad=Join-Path $root 'atomsk';New-Item -ItemType Directory -Force -Path $ad|Out-Null;$atomskDest=Join-Path $ad 'atomsk.exe';Copy-Item -LiteralPath $atomskSource -Destination $atomskDest -Force;if(-not(Test-Path -LiteralPath $atomskDest)){throw 'Private Atomsk copy failed'}`
+	root = filepath.Clean(root)
+	dst := filepath.Join(root, cleanName)
+	rel, err := filepath.Rel(root, dst)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("archive path escapes destination %q", name)
+	}
+	return dst, nil
+}
+
+func extractZip(data []byte, root string) error {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return err
+	}
+	for _, f := range zr.File {
+		dst, err := safeZipDestination(root, f.Name)
+		if err != nil {
+			return err
+		}
+		if f.FileInfo().IsDir() {
+			if err = os.MkdirAll(dst, 0755); err != nil {
+				return err
+			}
+			continue
+		}
+		if err = os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+			return err
+		}
+		r, err := f.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			r.Close()
+			return err
+		}
+		_, copyErr := io.Copy(out, r)
+		closeErr := out.Close()
+		r.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+	}
+	return nil
+}
+
+// InstallOfflineEngines deploys the bundled application-local runtime without
+// invoking a system Python installer or pip on the end user's computer.
+func InstallOfflineEngines(root string, bundle []byte) error {
+	if err := VerifyOfflineEngineBundle(bundle); err != nil {
+		return err
+	}
+	zr, _ := zip.NewReader(bytes.NewReader(bundle), int64(len(bundle)))
+	files := map[string]*zip.File{}
+	for _, f := range zr.File {
+		files[strings.ReplaceAll(f.Name, `\`, `/`)] = f
+	}
+	runtimeData, err := readZipFile(files["python-runtime.zip"])
+	if err != nil {
+		return fmt.Errorf("read private Python runtime: %w", err)
+	}
+	if err = extractZip(runtimeData, filepath.Join(root, "python")); err != nil {
+		return fmt.Errorf("extract private Python runtime: %w", err)
+	}
+	atomskData, err := readZipFile(files["atomsk/atomsk.exe"])
+	if err != nil {
+		return fmt.Errorf("read private Atomsk: %w", err)
+	}
+	atomskDir := filepath.Join(root, "atomsk")
+	if err = os.MkdirAll(atomskDir, 0755); err != nil {
+		return err
+	}
+	if err = os.WriteFile(filepath.Join(atomskDir, "atomsk.exe"), atomskData, 0644); err != nil {
+		return fmt.Errorf("write private Atomsk: %w", err)
+	}
+	return nil
 }

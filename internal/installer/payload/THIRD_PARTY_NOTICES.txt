@@ -1,8 +1,8 @@
 Ti Alloy Studio Phase 1 R3 Offline - bundled scientific engines
 
-R3 Offline is designed so the end user's installation requires no internet access and does not modify system Python, Conda, or PATH. The release installer carries an engine-bundle.zip that contains the official Windows distributions and a fully resolved offline Python wheelhouse.
+R3 Offline is designed so the end user's installation requires no internet access and does not modify system Python, Conda, or PATH. The release installer carries an engine-bundle.zip containing a prebuilt application-local Python runtime and the private Atomsk executable. Python packages are resolved and installed into that runtime only on the release builder; the end-user installer invokes neither the system Python installer nor pip.
 
-CPython 3.11.9 (Windows x64 full installer)
+CPython 3.11.9 (Windows x64 embeddable distribution)
   Project: https://www.python.org/
   License: Python Software Foundation License
   Purpose: private runtime under <install>\engines\python.
@@ -33,6 +33,6 @@ AtomMan 1.4.11
   License: see bundled package metadata/source distribution
   Purpose: independent atomistic structure/defect representation and future defect-model cross-checks.
 
-The wheelhouse also contains the transitive dependencies needed by the pinned packages above. Their license metadata and SHA256 values are recorded in the release engine bundle.
+The build-time wheelhouse contains the transitive dependencies needed by the pinned packages above. The resulting packages are stored in the bundled application-local runtime; their pinned versions are recorded in requirements-offline.txt and release hashes are recorded in SHA256SUMS.txt.
 
 The build-time fetch script is allowed to access official package servers. The end-user installer is not.

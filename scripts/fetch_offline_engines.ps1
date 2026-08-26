@@ -3,19 +3,32 @@ $ProgressPreference = 'SilentlyContinue'
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Out = Join-Path $Root 'build\offline-engine-bundle'
-$Wheelhouse = Join-Path $Out 'wheelhouse'
+$Work = Join-Path $Root 'build\offline-engine-work'
+$Wheelhouse = Join-Path $Work 'wheelhouse'
+$Runtime = Join-Path $Work 'python-runtime'
 $Spec = Join-Path $Root 'offline-engine-spec\requirements-offline.in'
 $Lock = Join-Path $Out 'requirements-offline.txt'
 
 Remove-Item $Out -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Wheelhouse | Out-Null
+New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
-Write-Host '[1/8] Downloading official CPython 3.11.9 Windows x64 installer'
+Write-Host '[1/9] Preparing the official CPython 3.11.9 embeddable x64 runtime'
+$PythonEmbed = Join-Path $Work 'python-3.11.9-embed-amd64.zip'
 Invoke-WebRequest -UseBasicParsing `
-  -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' `
-  -OutFile (Join-Path $Out 'python-3.11.9-amd64.exe')
+  -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip' `
+  -OutFile $PythonEmbed
+New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
+Expand-Archive -LiteralPath $PythonEmbed -DestinationPath $Runtime -Force
+@(
+  'python311.zip'
+  '.'
+  'Lib\site-packages'
+  'import site'
+) | Set-Content -LiteralPath (Join-Path $Runtime 'python311._pth') -Encoding ASCII
 
-Write-Host '[2/8] Downloading and staging official Atomsk 0.13.1 Windows binary'
+Write-Host '[2/9] Downloading and staging official Atomsk 0.13.1 Windows binary'
 $AtomskArchive = Join-Path $env:TEMP ('TiAlloyStudio-atomsk-' + [guid]::NewGuid() + '.zip')
 $AtomskUnpack = Join-Path $env:TEMP ('TiAlloyStudio-atomsk-unpack-' + [guid]::NewGuid())
 $AtomskInstall = Join-Path $env:TEMP ('TiAlloyStudio-atomsk-install-' + [guid]::NewGuid())
@@ -81,7 +94,7 @@ finally {
   Remove-Item $AtomskSmokeDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host '[3/8] Resolving a fully pinned Python 3.11 science environment'
+Write-Host '[3/9] Resolving a fully pinned Python 3.11 science environment'
 $BuildPython = (Get-Command python -ErrorAction Stop).Source
 $BuildPyVersion = & $BuildPython -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 if ($BuildPyVersion -ne '3.11') { throw "Release builder requires Python 3.11, found $BuildPyVersion at $BuildPython" }
@@ -94,11 +107,11 @@ if ($LASTEXITCODE -ne 0) { throw 'pip upgrade failed in release-builder environm
 if ($LASTEXITCODE -ne 0) { throw 'Pinned science environment resolution failed' }
 & $Py -m pip freeze --all | Where-Object { $_ -notmatch '^(pip|setuptools)==' } | Set-Content -LiteralPath $Lock -Encoding ASCII
 
-Write-Host '[4/8] Building complete Windows wheelhouse (build sdists such as bibtexparser when necessary)'
+Write-Host '[4/9] Building complete Windows wheelhouse (build sdists such as bibtexparser when necessary)'
 & $Py -m pip wheel --disable-pip-version-check --wheel-dir $Wheelhouse -r $Lock
 if ($LASTEXITCODE -ne 0) { throw 'Wheelhouse build failed' }
 
-Write-Host '[5/8] Verifying top-level official wheels'
+Write-Host '[5/9] Verifying top-level official wheels'
 $Expected = @{
   'ase-3.29.0-py3-none-any.whl' = '7b9dd103f007810339c24acfee2f6b677c0c48443b21d3c98e52959246cf4ebf'
   'spglib-2.7.0-cp311-cp311-win_amd64.whl' = '468879702577124dcde0607a75396576e256f1cfa2d8fe48da4a928fbb27abc6'
@@ -112,7 +125,7 @@ foreach ($Name in $Expected.Keys) {
   if ($Hash -ne $Expected[$Name]) { throw "SHA256 mismatch for ${Name}: $Hash" }
 }
 
-Write-Host '[6/8] Proving the wheelhouse installs with NO network access'
+Write-Host '[6/9] Proving the wheelhouse installs with NO network access'
 $Offline = Join-Path $env:TEMP ('TiAlloyStudio-offline-' + [guid]::NewGuid())
 & $BuildPython -m venv $Offline
 $OfflinePy = Join-Path $Offline 'Scripts\python.exe'
@@ -121,18 +134,30 @@ if ($LASTEXITCODE -ne 0) { throw 'Offline wheelhouse installation failed' }
 & $OfflinePy -c "import ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('offline-python-stack-PASS')"
 if ($LASTEXITCODE -ne 0) { throw 'Offline science stack verification failed' }
 
-Write-Host '[7/8] Recording hashes for every offline payload file'
+Write-Host '[7/9] Preinstalling the complete science stack into the app-local runtime'
+$RuntimeSite = Join-Path $Runtime 'Lib\site-packages'
+New-Item -ItemType Directory -Force -Path $RuntimeSite | Out-Null
+& $Py -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse --target $RuntimeSite -r $Lock
+if ($LASTEXITCODE -ne 0) { throw 'App-local Python science stack staging failed' }
+$RuntimePython = Join-Path $Runtime 'python.exe'
+& $RuntimePython -c "import sys,ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('app-local-python-stack-PASS',sys.executable)"
+if ($LASTEXITCODE -ne 0) { throw 'App-local Python runtime validation failed' }
+$RuntimeBundle = Join-Path $Out 'python-runtime.zip'
+Compress-Archive -Path (Join-Path $Runtime '*') -DestinationPath $RuntimeBundle -CompressionLevel Optimal
+
+Write-Host '[8/9] Recording hashes for every offline payload file'
 Get-ChildItem $Out -File -Recurse | Sort-Object FullName | ForEach-Object {
   $rel = $_.FullName.Substring($Out.Length + 1)
   $sha = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
   "$sha  $rel"
 } | Set-Content -LiteralPath (Join-Path $Out 'SHA256SUMS.txt') -Encoding ASCII
 
-Write-Host '[8/8] Creating engine-bundle.zip'
+Write-Host '[9/9] Creating engine-bundle.zip'
 $Bundle = Join-Path $Root 'internal\installer\payload\engine-bundle.zip'
 Remove-Item $Bundle -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $Out '*') -DestinationPath $Bundle -CompressionLevel Optimal
 
 Remove-Item $Stage -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $Offline -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "Offline engine bundle ready: $Bundle"
