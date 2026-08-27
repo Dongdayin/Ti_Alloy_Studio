@@ -65,5 +65,36 @@ func ScientificSmoke() (SmokeResult, error) {
 		return out, fmt.Errorf("interface validation failed")
 	}
 	out.Checks = append(out.Checks, "Burgers alpha/beta interface construction")
+
+	revisions := app.NewState()
+	if _, err = revisions.BuildTracked(app.BuildRequest{Module: "crystal", Phase: "alpha", NX: 2, NY: 2, NZ: 2}); err != nil {
+		return out, fmt.Errorf("revision smoke root build: %w", err)
+	}
+	root := revisions.ProjectManifest("").ActiveRevisionID
+	_, _, rootXYZ, err := revisions.ExportRevision(root, "xyz")
+	if err != nil {
+		return out, fmt.Errorf("revision smoke root export: %w", err)
+	}
+	if _, err = revisions.BuildChild(root, app.BuildRequest{Module: "crystal", Phase: "beta", NX: 3, NY: 2, NZ: 2}); err != nil {
+		return out, fmt.Errorf("revision smoke edit: %w", err)
+	}
+	child := revisions.ProjectManifest("").ActiveRevisionID
+	_, _, childXYZ, err := revisions.ExportRevision(child, "xyz")
+	if err != nil || childXYZ == rootXYZ {
+		return out, fmt.Errorf("revision smoke child export did not preserve a distinct edited structure: %w", err)
+	}
+	project, err := revisions.ExportProjectArchive("smoke path with spaces")
+	if err != nil {
+		return out, fmt.Errorf("revision smoke project export: %w", err)
+	}
+	reopened := app.NewState()
+	if _, err = reopened.ImportProjectArchive(project); err != nil {
+		return out, fmt.Errorf("revision smoke project reopen: %w", err)
+	}
+	_, _, reopenedRootXYZ, err := reopened.ExportRevision(root, "xyz")
+	if err != nil || reopenedRootXYZ != rootXYZ || len(reopened.ProjectManifest("").History) != 2 {
+		return out, fmt.Errorf("revision smoke project round trip changed history or root export: %w", err)
+	}
+	out.Checks = append(out.Checks, "revision edit/export/project round trip")
 	return out, nil
 }

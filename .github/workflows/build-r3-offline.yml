@@ -82,7 +82,7 @@ jobs:
       - name: Clean-install final offline installer
         shell: pwsh
         run: |
-          $install=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-CleanInstall'
+          $install=Join-Path $env:RUNNER_TEMP 'Ti Alloy Studio Clean Install'
           $diag=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-install-error.log'
           Remove-Item $diag -Force -ErrorAction SilentlyContinue
           if (Test-Path $install) { Remove-Item $install -Recurse -Force }
@@ -232,6 +232,7 @@ jobs:
           - Windows pre-install native scientific smoke: PASS
           - Clean Windows temporary-directory installation: PASS
           - Installed native scientific smoke: PASS
+          - Immutable revision edit, historical re-export and portable project round trip: PASS
           - Installed mature-engine cross-check: PASS
           - Windows uninstall registration: PASS
           - Actual uninstall and installation-directory removal: PASS
@@ -257,7 +258,7 @@ jobs:
 
           ## Phase 1 boundary
 
-          Phase 1 provides titanium-alloy structure generation, composition integerization, random-alloy and SQS workflows, point defects, selected surfaces, Burgers alpha/beta interface construction, EOS and GSFE structure-series generation, validation, scientific visualization, provenance, and VASP/LAMMPS/extxyz/CIF-style export paths implemented by the release. Long-running VASP/LAMMPS/GPUMD calculations, automatic EOS fitting from DFT results, NEP training/active learning, complex dislocation cores, grain boundaries, polycrystals, cracks, nanoindentation, and shock workflows remain later-phase work unless explicitly implemented and tested in the software.
+          Phase 1 provides standalone titanium-alloy structure generation, composition integerization, bundled pair/triplet-probability SQS modeling, point defects, selected surfaces, Burgers alpha/beta interface construction, EOS and GSFE structure-series generation, validation, scientific visualization, immutable revision projects, and VASP/LAMMPS/extxyz/CIF-style structure export paths. The normal workflow requires no WSL or locally installed solver. Long-running VASP/LAMMPS/GPUMD calculations, automatic EOS fitting from DFT results, NEP training/active learning, complex dislocation cores, grain boundaries, polycrystals, cracks, nanoindentation, and shock workflows are outside this modeling-only release.
           "@
           $report | Set-Content -LiteralPath 'dist\Phase1-Acceptance-Report.md' -Encoding utf8
           Get-Content 'dist\Phase1-Acceptance-Report.md'
