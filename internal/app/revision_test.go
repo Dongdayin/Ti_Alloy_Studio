@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 )
 
@@ -63,6 +65,24 @@ func TestTrackedRevisionStoresExactImmutableSnapshotAndCanBeSelected(t *testing.
 	branched := st.ProjectManifest("")
 	if got := branched.History[len(branched.History)-1].ParentID; got != revision.ID {
 		t.Fatalf("build after selection parent = %q, want selected revision %q", got, revision.ID)
+	}
+}
+
+func TestRevisionExportHashesMatchActualDownloads(t *testing.T) {
+	st := NewState()
+	if _, err := st.BuildTracked(BuildRequest{Module: "crystal", Phase: "alpha"}); err != nil {
+		t.Fatal(err)
+	}
+	rev := st.ProjectManifest("").History[0]
+	for _, format := range []string{"poscar", "xyz", "extxyz", "lammps", "cif"} {
+		_, _, content, err := st.ExportRevision(rev.ID, format)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256([]byte(content))
+		if got := hex.EncodeToString(sum[:]); got != rev.ExportSHA256[format] {
+			t.Errorf("%s export SHA-256 = %s, recorded %s", format, got, rev.ExportSHA256[format])
+		}
 	}
 }
 

@@ -3,7 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"tialloystudio/internal/app"
 	"tialloystudio/internal/engines"
@@ -31,6 +33,10 @@ func NewHandler(state *app.State) http.Handler {
 	mux.HandleFunc("/api/project", a.project)
 	mux.HandleFunc("/api/project/export", a.projectExport)
 	mux.HandleFunc("/api/project/import", a.projectImport)
+	mux.HandleFunc("/api/project/revision", a.projectRevision)
+	mux.HandleFunc("/api/project/select", a.projectSelect)
+	mux.HandleFunc("/api/project/edit", a.projectEdit)
+	mux.HandleFunc("/api/project/derive", a.projectDerive)
 	return mux
 }
 
@@ -72,7 +78,7 @@ func (a *api) export(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	name, mime, content, err := a.state.Export(r.URL.Query().Get("format"))
+	name, mime, content, err := a.state.ExportRevision(r.URL.Query().Get("revision_id"), r.URL.Query().Get("format"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -120,14 +126,13 @@ func (a *api) projectExport(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	manifest := a.state.ProjectManifest(r.URL.Query().Get("name"))
-	b, err := json.MarshalIndent(manifest, "", "  ")
+	b, err := a.state.ExportProjectArchive(r.URL.Query().Get("name"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="project.json"`)
+	w.Header().Set("Content-Type", "application/vnd.tialloystudio.project+zip")
+	w.Header().Set("Content-Disposition", `attachment; filename="project.tias-project"`)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(b)
 }
@@ -137,17 +142,116 @@ func (a *api) projectImport(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
-	dec.DisallowUnknownFields()
-	var manifest app.ProjectManifest
-	if err := dec.Decode(&manifest); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid project manifest: %w", err))
+	limited := http.MaxBytesReader(w, r.Body, 256<<20)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("read project package: %w", err))
 		return
 	}
-	res, err := a.state.ImportProject(manifest)
+	var res app.BuildResponse
+	if strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "json") {
+		var manifest app.ProjectManifest
+		dec := json.NewDecoder(strings.NewReader(string(data)))
+		dec.DisallowUnknownFields()
+		if err = dec.Decode(&manifest); err == nil {
+			res, err = a.state.ImportProject(manifest)
+		}
+	} else {
+		res, err = a.state.ImportProjectArchive(data)
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (a *api) projectRevision(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	m := a.state.ProjectManifest("")
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		writeJSON(w, http.StatusOK, m)
+		return
+	}
+	for _, record := range m.History {
+		if record.ID == id {
+			writeJSON(w, http.StatusOK, record)
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, fmt.Errorf("revision %q not found", id))
+}
+
+func decodeStrictJSON(w http.ResponseWriter, r *http.Request, out any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(out); err != nil {
+		return fmt.Errorf("invalid request: %w", err)
+	}
+	return nil
+}
+
+func (a *api) projectSelect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		RevisionID string `json:"revision_id"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := a.state.SelectRevision(req.RevisionID); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.state.ProjectManifest(""))
+}
+
+func (a *api) projectEdit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ParentRevisionID string           `json:"parent_revision_id"`
+		Request          app.BuildRequest `json:"request"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := a.state.BuildChild(req.ParentRevisionID, req.Request); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.state.ProjectManifest(""))
+}
+
+func (a *api) projectDerive(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ParentRevisionID string `json:"parent_revision_id"`
+		Operation        string `json:"operation"`
+		SiteID           int    `json:"site_id"`
+		NewSpecies       string `json:"new_species,omitempty"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if _, err := a.state.DeriveRevision(req.ParentRevisionID, app.DeriveRequest{Operation: req.Operation, SiteID: req.SiteID, NewSpecies: req.NewSpecies}); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a.state.ProjectManifest(""))
 }

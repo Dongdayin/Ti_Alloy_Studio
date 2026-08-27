@@ -53,10 +53,10 @@ type BuildResponse struct {
 	Structure  model.Structure              `json:"structure"`
 	Validation model.ValidationReport       `json:"validation"`
 	Allocation *model.CompositionAllocation `json:"allocation,omitempty"`
-	SQS        *model.SQSQuality             `json:"sqs,omitempty"`
-	ATAT       *engines.ATATQuality          `json:"atat,omitempty"`
-	Analysis   map[string]any                `json:"analysis,omitempty"`
-	Series     map[string]any                `json:"series,omitempty"`
+	SQS        *model.SQSQuality            `json:"sqs,omitempty"`
+	ATAT       *engines.ATATQuality         `json:"atat,omitempty"`
+	Analysis   map[string]any               `json:"analysis,omitempty"`
+	Series     map[string]any               `json:"series,omitempty"`
 	Engines    []engines.Report             `json:"engines,omitempty"`
 }
 
@@ -530,17 +530,37 @@ func (s *State) Export(format string) (filename, mime, content string, err error
 	if cur.Structure.NAtoms() == 0 {
 		return "", "", "", errors.New("no active model")
 	}
+	return exportStructure(cur.Structure, format)
+}
+
+// ExportRevision exports an immutable historical snapshot without changing
+// the active revision or appending project history.
+func (s *State) ExportRevision(id, format string) (filename, mime, content string, err error) {
+	if strings.TrimSpace(id) == "" {
+		return s.Export(format)
+	}
+	record, err := s.revisionSnapshot(id)
+	if err != nil {
+		return "", "", "", err
+	}
+	return exportStructure(record.Structure, format)
+}
+
+func exportStructure(structure model.Structure, format string) (filename, mime, content string, err error) {
+	if structure.NAtoms() == 0 {
+		return "", "", "", errors.New("revision has no structure snapshot")
+	}
 	switch strings.ToLower(format) {
 	case "poscar", "vasp":
-		return "POSCAR", "text/plain", model.ExportPOSCAR(cur.Structure, "Ti Alloy Studio"), nil
+		return "POSCAR", "text/plain", model.ExportPOSCAR(structure, "Ti Alloy Studio"), nil
 	case "xyz":
-		return "model.xyz", "chemical/x-xyz", model.ExportXYZ(cur.Structure), nil
+		return "model.xyz", "chemical/x-xyz", model.ExportXYZ(structure), nil
 	case "extxyz", "gpumd":
-		return "model.extxyz", "chemical/x-xyz", model.ExportExtXYZ(cur.Structure), nil
+		return "model.extxyz", "chemical/x-xyz", model.ExportExtXYZ(structure), nil
 	case "lammps", "data":
-		return "model.data", "text/plain", model.ExportLAMMPS(cur.Structure), nil
+		return "model.data", "text/plain", model.ExportLAMMPS(structure), nil
 	case "cif":
-		return "model.cif", "chemical/x-cif", model.ExportCIF(cur.Structure), nil
+		return "model.cif", "chemical/x-cif", model.ExportCIF(structure), nil
 	default:
 		return "", "", "", fmt.Errorf("unsupported export format %q", format)
 	}

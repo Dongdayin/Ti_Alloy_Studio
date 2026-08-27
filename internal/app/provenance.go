@@ -119,7 +119,7 @@ func structureSHA256(s model.Structure) string {
 
 func exportHashes(s model.Structure) map[string]string {
 	return map[string]string{
-		"poscar": sha256Text(model.ExportPOSCAR(s, "Ti Alloy Studio provenance")),
+		"poscar": sha256Text(model.ExportPOSCAR(s, "Ti Alloy Studio")),
 		"lammps": sha256Text(model.ExportLAMMPS(s)),
 		"extxyz": sha256Text(model.ExportExtXYZ(s)),
 		"xyz":    sha256Text(model.ExportXYZ(s)),
