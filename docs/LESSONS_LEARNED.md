@@ -1,5 +1,12 @@
 # Lessons learned
 
+## Inspector cards overlapped in short windows
+
+- Trigger: the desktop inspector contained several content-sized cards in a height-constrained vertical flex container.
+- Root cause: flex items retained the default `flex-shrink: 1`, so their boxes became shorter than their wrapped content; the content then painted over following cards. Nested list scrolling made the layout harder to follow.
+- Fix: make direct inspector panels non-shrinking, let validation and engine lists expand naturally, and keep scrolling at the inspector boundary.
+- Regression gate: the web asset test requires non-shrinking inspector panels and visible, non-scrolling card contents.
+
 ## 2026-08-27 — Do not use a registered CPython installer for an app-local runtime
 
 - Trigger: CPython 3.11.9 was already installed for the current Windows user.

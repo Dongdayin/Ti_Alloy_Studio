@@ -53,8 +53,9 @@ func TestWorkbenchResponsiveRevisionWorkflowAndBundledCapabilities(t *testing.T)
 	if strings.Contains(css, "min-width:1024px") || strings.Contains(css, "min-width:940px") {
 		t.Fatal("fixed body minimum width still blocks narrow-window controls")
 	}
+	compactCSS := strings.Join(strings.Fields(css), "")
 	for _, needle := range []string{"@media(max-width:1099px)", "mobileTabs", "data-mobile-panel"} {
-		if !strings.Contains(css, needle) {
+		if !strings.Contains(compactCSS, needle) {
 			t.Errorf("responsive CSS missing %q", needle)
 		}
 	}
@@ -70,5 +71,17 @@ func TestWorkbenchResponsiveRevisionWorkflowAndBundledCapabilities(t *testing.T)
 	}
 	if strings.Contains(appJS, "refreshEnvironment();") {
 		t.Fatal("startup still automatically probes external WSL/solver environment")
+	}
+}
+
+func TestInspectorPanelsDoNotShrinkOrCreateNestedScrollAreas(t *testing.T) {
+	css := strings.Join(strings.Fields(servedAsset(t, "/style.css")), "")
+	for _, needle := range []string{
+		`.inspector>.panel{flex:00auto`,
+		`.checks,.enginePanel{display:flex;flex-direction:column;gap:6px;overflow:visible`,
+	} {
+		if !strings.Contains(css, needle) {
+			t.Errorf("inspector overflow protection missing %q", needle)
+		}
 	}
 }
