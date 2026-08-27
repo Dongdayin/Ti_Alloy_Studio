@@ -263,16 +263,19 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 				return out, err
 			}
 			out.Structure = r.Structure
-			out.Structure.Meta["sqs_engine"] = "TiModelCore pair-SQS"
+			out.Structure.Meta["sqs_engine"] = "TiModelCore pair/triplet correlation SQS"
 			out.Structure.Meta["sqs_backend"] = "native"
-			out.Structure.Meta["sqs_scope"] = "selected neighbor-shell pair correlations"
+			out.Structure.Meta["sqs_scope"] = "selected neighbor-shell pair probabilities and closed triplet probability geometries"
 			out.SQS = &r.Quality
 			out.Analysis["initial_objective"] = r.InitialObjective
 			out.Analysis["objective"] = r.Quality.Objective
 			out.Analysis["max_abs_pair_error"] = r.Quality.MaxAbsPairError
-			out.Analysis["engine"] = "TiModelCore pair-SQS · selected neighbor-shell pair correlations"
-			out.Analysis["scope"] = "pair correlations only; not claimed equivalent to full ATAT cluster-correlation SQS"
+			out.Analysis["max_abs_triplet_error"] = r.Quality.MaxAbsTripletError
+			out.Analysis["engine"] = "TiModelCore pair/triplet correlation SQS"
+			out.Analysis["scope"] = "pair and triplet occupation-probability residuals for bounded internal geometries; not claimed equivalent to ATAT basis-cluster correlations"
+			out.Analysis["verification_status"] = r.Quality.VerificationStatus
 			out.Series["convergence"] = r.Convergence
+			out.Series["triplet_correlations"] = r.Quality.TripletClusters
 
 		case "atat":
 			if req.ATATPairCutoff <= 0 {
@@ -598,9 +601,9 @@ func moduleValidation(out *BuildResponse) {
 					"ATAT bestcorr.out was parsed. RMS/max correlation differences are reported as convergence diagnostics; Ti Alloy Studio applies no universal acceptance threshold.",
 					out.ATAT.MaxAbsDifference)
 			} else if out.SQS != nil {
-				addCheck(&out.Validation, "sqs_native_pair_correlations", "PASS",
-					"TiModelCore pair-SQS completed. Pair-correlation objective/max errors are reported as diagnostics only; converge cell size, selected neighbor shells, and the target property. This backend is not claimed equivalent to full ATAT cluster-correlation SQS.",
-					out.SQS.MaxAbsPairError)
+				addCheck(&out.Validation, "sqs_native_pair_triplet_correlations", "PASS",
+					"TiModelCore pair/triplet probability optimization completed. Pair/triplet residuals are diagnostics only; converge cell size, selected geometry set, and the target property. The result is not labeled ATAT-verified.",
+					math.Max(out.SQS.MaxAbsPairError, out.SQS.MaxAbsTripletError))
 			}
 		}
 

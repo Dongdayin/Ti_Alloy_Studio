@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSQSDefaultsToBuiltInPairSQSWithoutATAT(t *testing.T) {
+func TestSQSDefaultsToBuiltInPairTripletSQSWithoutATAT(t *testing.T) {
 	state := NewState()
 	res, err := state.Build(BuildRequest{
 		Module: "sqs",
@@ -19,14 +19,20 @@ func TestSQSDefaultsToBuiltInPairSQSWithoutATAT(t *testing.T) {
 		t.Fatalf("default SQS must work without WSL/ATAT: %v", err)
 	}
 	if res.SQS == nil {
-		t.Fatal("default native SQS must return pair-correlation quality metrics")
+		t.Fatal("default native SQS must return correlation quality metrics")
 	}
 	if got := strings.ToLower(res.Structure.Meta["sqs_backend"].(string)); got != "native" {
 		t.Fatalf("default SQS backend=%q, want native", got)
 	}
 	engine, _ := res.Analysis["engine"].(string)
-	if !strings.Contains(strings.ToLower(engine), "timodelcore") || !strings.Contains(strings.ToLower(engine), "pair-sqs") {
-		t.Fatalf("default SQS must identify TiModelCore pair-SQS scope, engine=%q", engine)
+	if !strings.Contains(strings.ToLower(engine), "timodelcore") || !strings.Contains(strings.ToLower(engine), "pair/triplet") {
+		t.Fatalf("default SQS must identify TiModelCore pair/triplet scope, engine=%q", engine)
+	}
+	if res.SQS.Method != "pair_triplet_correlation_sqs" || res.SQS.VerificationStatus != "not_atat_verified" {
+		t.Fatalf("native SQS labeling=%q/%q", res.SQS.Method, res.SQS.VerificationStatus)
+	}
+	if strings.Contains(strings.ToLower(engine), "verified_sqs") {
+		t.Fatalf("native result was mislabeled as verified_sqs: %q", engine)
 	}
 }
 

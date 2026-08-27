@@ -1,11 +1,367 @@
 package model
-import("errors";"math";"math/rand";"sort")
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"math/rand"
+	"sort"
+)
+
 type PairKey string
-type PairShellQuality struct{ShellIndex int `json:"shell_index"`;Distance float64 `json:"distance_angstrom"`;PairCount int `json:"pair_count"`;Observed map[PairKey]float64 `json:"observed_pair_probabilities"`;Target map[PairKey]float64 `json:"target_pair_probabilities"`;Errors map[PairKey]float64 `json:"pair_errors"`;RMS float64 `json:"rms_pair_error"`;MaxAbs float64 `json:"max_abs_pair_error"`;WarrenCowley map[PairKey]float64 `json:"warren_cowley"`}
-type SQSQuality struct{Shells []PairShellQuality `json:"shells"`;Objective float64 `json:"objective"`;MaxAbsPairError float64 `json:"max_abs_pair_error"`}
-type SQSResult struct{Structure Structure `json:"structure"`;Quality SQSQuality `json:"quality"`;InitialObjective float64 `json:"initial_objective"`;Convergence []float64 `json:"convergence"`;Seed int64 `json:"seed"`;Steps int `json:"steps"`;Engine string `json:"engine"`}
-type pairShell struct{index int;distance float64;pairs [][2]int}
-func pairKey(a,b string)PairKey{if a>b{a,b=b,a};return PairKey(a+"-"+b)}
-func buildPairShells(s Structure,nShells int,tol float64)([]pairShell,error){if nShells<1{return nil,errors.New("n_shells must be >=1")};type rec struct{d float64;i,j int};var all []rec;frac:=s.Fractional(false);for i:=0;i<len(frac)-1;i++{for j:=i+1;j<len(frac);j++{d:=VSub(frac[j],frac[i]);for a:=0;a<3;a++{if s.PBC[a]{d[a]-=math.Round(d[a])}};dist:=Norm(FracToCart(d,s.Cell));if dist>1e-10{all=append(all,rec{dist,i,j})}}};sort.Slice(all,func(i,j int)bool{return all[i].d<all[j].d});groups:=[][]rec{};for _,r:=range all{if len(groups)==0{groups=append(groups,[]rec{r});continue};g:=groups[len(groups)-1];mean:=0.0;for _,x:=range g{mean+=x.d};mean/=float64(len(g));if math.Abs(r.d-mean)<=tol{groups[len(groups)-1]=append(groups[len(groups)-1],r)}else{groups=append(groups,[]rec{r})};if len(groups)>nShells&&r.d-groups[nShells-1][0].d>tol{break}};if len(groups)<nShells{return nil,errors.New("not enough neighbor shells")};out:=make([]pairShell,nShells);for k:=0;k<nShells;k++{mean:=0.0;for _,r:=range groups[k]{mean+=r.d;out[k].pairs=append(out[k].pairs,[2]int{r.i,r.j})};out[k].index=k+1;out[k].distance=mean/float64(len(groups[k]))};return out,nil}
-func sqsQuality(species []string,shells []pairShell)SQSQuality{counts:=map[string]int{};for _,e:=range species{counts[e]++};elems:=make([]string,0,len(counts));for e:=range counts{elems=append(elems,e)};sort.Strings(elems);conc:=map[string]float64{};for e,n:=range counts{conc[e]=float64(n)/float64(len(species))};target:=map[PairKey]float64{};for i,a:=range elems{for _,b:=range elems[i:]{if a==b{target[pairKey(a,b)]=conc[a]*conc[b]}else{target[pairKey(a,b)]=2*conc[a]*conc[b]}}};out:=SQSQuality{};sum2:=0.0;nerr:=0;maxall:=0.0;for _,sh:=range shells{obsCount:=map[PairKey]int{};direct:=map[string]map[string]int{};for _,a:=range elems{direct[a]=map[string]int{}};for _,p:=range sh.pairs{a,b:=species[p[0]],species[p[1]];obsCount[pairKey(a,b)]++;direct[a][b]++;direct[b][a]++};obs:=map[PairKey]float64{};errs:=map[PairKey]float64{};wc:=map[PairKey]float64{};s2:=0.0;mx:=0.0;for k,t:=range target{obs[k]=float64(obsCount[k])/float64(len(sh.pairs));errs[k]=obs[k]-t;s2+=errs[k]*errs[k];mx=math.Max(mx,math.Abs(errs[k]));sum2+=errs[k]*errs[k];nerr++};for _,center:=range elems{tot:=0;for _,n:=range elems{tot+=direct[center][n]};for _,n:=range elems{v:=math.NaN();if tot>0&&conc[n]>0{conditional:=float64(direct[center][n])/float64(tot);v=1-conditional/conc[n]};wc[PairKey(center+"->"+n)]=v}};rms:=math.Sqrt(s2/float64(len(target)));out.Shells=append(out.Shells,PairShellQuality{sh.index,sh.distance,len(sh.pairs),obs,target,errs,rms,mx,wc});maxall=math.Max(maxall,mx)};if nerr>0{out.Objective=math.Sqrt(sum2/float64(nerr))};out.MaxAbsPairError=maxall;return out}
-func GenerateSQS(host Structure,alloc CompositionAllocation,seed int64,nShells,steps int,tol float64)(SQSResult,error){shells,err:=buildPairShells(host,nShells,tol);if err!=nil{return SQSResult{},err};initial:=RandomSubstitution(host,alloc,seed);cur:=append([]string(nil),initial.Species...);q:=sqsQuality(cur,shells);initialObj:=q.Objective;best:=append([]string(nil),cur...);bestq:=q;conv:=[]float64{q.Objective};rng:=rand.New(rand.NewSource(seed+7919));t0,t1:=0.02,1e-4;for st:=0;st<steps;st++{i,j:=rng.Intn(len(cur)),rng.Intn(len(cur));if i==j||cur[i]==cur[j]{conv=append(conv,bestq.Objective);continue};cur[i],cur[j]=cur[j],cur[i];cand:=sqsQuality(cur,shells);delta:=cand.Objective-q.Objective;f:=float64(st)/math.Max(1,float64(steps-1));temp:=t0*math.Pow(t1/t0,f);accept:=delta<=0||rng.Float64()<math.Exp(-delta/temp);if accept{q=cand;if cand.Objective<bestq.Objective-1e-15{bestq=cand;best=append([]string(nil),cur...)}}else{cur[i],cur[j]=cur[j],cur[i]};conv=append(conv,bestq.Objective)};out:=host;out.Species=best;out.Meta=cloneMeta(host.Meta);out.Meta["model_kind"]="sqs";out.Meta["sqs_objective"]=bestq.Objective;return SQSResult{out,bestq,initialObj,conv,seed,steps,"TiModelCore pair-statistics annealer"},nil}
+type TripletKey string
+
+type PairShellQuality struct {
+	ShellIndex   int                 `json:"shell_index"`
+	Distance     float64             `json:"distance_angstrom"`
+	PairCount    int                 `json:"pair_count"`
+	Observed     map[PairKey]float64 `json:"observed_pair_probabilities"`
+	Target       map[PairKey]float64 `json:"target_pair_probabilities"`
+	Errors       map[PairKey]float64 `json:"pair_errors"`
+	RMS          float64             `json:"rms_pair_error"`
+	MaxAbs       float64             `json:"max_abs_pair_error"`
+	WarrenCowley map[PairKey]float64 `json:"warren_cowley"`
+}
+
+type TripletClusterQuality struct {
+	ClusterIndex   int                    `json:"cluster_index"`
+	ShellSignature [3]int                 `json:"shell_signature"`
+	TripletCount   int                    `json:"triplet_count"`
+	Observed       map[TripletKey]float64 `json:"observed_triplet_probabilities"`
+	Target         map[TripletKey]float64 `json:"target_triplet_probabilities"`
+	Errors         map[TripletKey]float64 `json:"triplet_errors"`
+	RMS            float64                `json:"rms_triplet_error"`
+	MaxAbs         float64                `json:"max_abs_triplet_error"`
+}
+
+type SQSQuality struct {
+	Method             string                  `json:"method"`
+	VerificationStatus string                  `json:"verification_status"`
+	Shells             []PairShellQuality      `json:"shells"`
+	TripletClusters    []TripletClusterQuality `json:"triplet_clusters"`
+	Objective          float64                 `json:"objective"`
+	MaxAbsPairError    float64                 `json:"max_abs_pair_error"`
+	MaxAbsTripletError float64                 `json:"max_abs_triplet_error"`
+}
+
+type SQSResult struct {
+	Structure        Structure  `json:"structure"`
+	Quality          SQSQuality `json:"quality"`
+	InitialObjective float64    `json:"initial_objective"`
+	Convergence      []float64  `json:"convergence"`
+	Seed             int64      `json:"seed"`
+	Steps            int        `json:"steps"`
+	Engine           string     `json:"engine"`
+}
+
+type pairShell struct {
+	index    int
+	distance float64
+	pairs    [][2]int
+}
+
+type tripletCluster struct {
+	signature [3]int
+	triplets  [][3]int
+}
+
+func pairKey(a, b string) PairKey {
+	if a > b {
+		a, b = b, a
+	}
+	return PairKey(a + "-" + b)
+}
+
+func tripletKey(a, b, c string) TripletKey {
+	items := []string{a, b, c}
+	sort.Strings(items)
+	return TripletKey(items[0] + "-" + items[1] + "-" + items[2])
+}
+
+func buildPairShells(s Structure, nShells int, tol float64) ([]pairShell, error) {
+	if nShells < 1 {
+		return nil, errors.New("n_shells must be >=1")
+	}
+	type rec struct {
+		d    float64
+		i, j int
+	}
+	var all []rec
+	frac := s.Fractional(false)
+	for i := 0; i < len(frac)-1; i++ {
+		for j := i + 1; j < len(frac); j++ {
+			d := VSub(frac[j], frac[i])
+			for axis := 0; axis < 3; axis++ {
+				if s.PBC[axis] {
+					d[axis] -= math.Round(d[axis])
+				}
+			}
+			distance := Norm(FracToCart(d, s.Cell))
+			if distance > 1e-10 {
+				all = append(all, rec{d: distance, i: i, j: j})
+			}
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].d < all[j].d })
+	groups := [][]rec{}
+	for _, item := range all {
+		if len(groups) == 0 {
+			groups = append(groups, []rec{item})
+			continue
+		}
+		group := groups[len(groups)-1]
+		mean := 0.0
+		for _, existing := range group {
+			mean += existing.d
+		}
+		mean /= float64(len(group))
+		if math.Abs(item.d-mean) <= tol {
+			groups[len(groups)-1] = append(groups[len(groups)-1], item)
+		} else {
+			groups = append(groups, []rec{item})
+		}
+		if len(groups) > nShells && item.d-groups[nShells-1][0].d > tol {
+			break
+		}
+	}
+	if len(groups) < nShells {
+		return nil, errors.New("not enough neighbor shells")
+	}
+	out := make([]pairShell, nShells)
+	for index := 0; index < nShells; index++ {
+		mean := 0.0
+		for _, item := range groups[index] {
+			mean += item.d
+			out[index].pairs = append(out[index].pairs, [2]int{item.i, item.j})
+		}
+		out[index].index = index + 1
+		out[index].distance = mean / float64(len(groups[index]))
+	}
+	return out, nil
+}
+
+func buildTripletClusters(shells []pairShell) []tripletCluster {
+	pairShellIndex := map[[2]int]int{}
+	maxSite := -1
+	for _, shell := range shells {
+		for _, pair := range shell.pairs {
+			pairShellIndex[pair] = shell.index
+			maxSite = max(maxSite, pair[1])
+		}
+	}
+	bySignature := map[[3]int][][3]int{}
+	for i := 0; i <= maxSite-2; i++ {
+		for j := i + 1; j <= maxSite-1; j++ {
+			sij, ok := pairShellIndex[[2]int{i, j}]
+			if !ok {
+				continue
+			}
+			for k := j + 1; k <= maxSite; k++ {
+				sik, okIK := pairShellIndex[[2]int{i, k}]
+				sjk, okJK := pairShellIndex[[2]int{j, k}]
+				if !okIK || !okJK {
+					continue
+				}
+				signatureSlice := []int{sij, sik, sjk}
+				sort.Ints(signatureSlice)
+				signature := [3]int{signatureSlice[0], signatureSlice[1], signatureSlice[2]}
+				bySignature[signature] = append(bySignature[signature], [3]int{i, j, k})
+			}
+		}
+	}
+	signatures := make([][3]int, 0, len(bySignature))
+	for signature := range bySignature {
+		signatures = append(signatures, signature)
+	}
+	sort.Slice(signatures, func(i, j int) bool {
+		for axis := 0; axis < 3; axis++ {
+			if signatures[i][axis] != signatures[j][axis] {
+				return signatures[i][axis] < signatures[j][axis]
+			}
+		}
+		return false
+	})
+	out := make([]tripletCluster, 0, len(signatures))
+	for _, signature := range signatures {
+		out = append(out, tripletCluster{signature: signature, triplets: bySignature[signature]})
+	}
+	return out
+}
+
+func concentrationData(species []string) ([]string, map[string]float64) {
+	counts := map[string]int{}
+	for _, element := range species {
+		counts[element]++
+	}
+	elements := make([]string, 0, len(counts))
+	concentrations := map[string]float64{}
+	for element, count := range counts {
+		elements = append(elements, element)
+		concentrations[element] = float64(count) / float64(len(species))
+	}
+	sort.Strings(elements)
+	return elements, concentrations
+}
+
+func pairTargets(elements []string, concentrations map[string]float64) map[PairKey]float64 {
+	targets := map[PairKey]float64{}
+	for i, a := range elements {
+		for _, b := range elements[i:] {
+			if a == b {
+				targets[pairKey(a, b)] = concentrations[a] * concentrations[b]
+			} else {
+				targets[pairKey(a, b)] = 2 * concentrations[a] * concentrations[b]
+			}
+		}
+	}
+	return targets
+}
+
+func tripletTargets(elements []string, concentrations map[string]float64) map[TripletKey]float64 {
+	targets := map[TripletKey]float64{}
+	for i, a := range elements {
+		for j := i; j < len(elements); j++ {
+			b := elements[j]
+			for k := j; k < len(elements); k++ {
+				c := elements[k]
+				multiplicity := 6.0
+				if a == c {
+					multiplicity = 1
+				} else if a == b || b == c {
+					multiplicity = 3
+				}
+				targets[tripletKey(a, b, c)] = multiplicity * concentrations[a] * concentrations[b] * concentrations[c]
+			}
+		}
+	}
+	return targets
+}
+
+func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster) SQSQuality {
+	elements, concentrations := concentrationData(species)
+	pairTarget := pairTargets(elements, concentrations)
+	tripletTarget := tripletTargets(elements, concentrations)
+	out := SQSQuality{Method: "pair_triplet_correlation_sqs", VerificationStatus: "not_atat_verified"}
+	sumSquared, errorCount := 0.0, 0
+	for _, shell := range shells {
+		observedCount := map[PairKey]int{}
+		directed := map[string]map[string]int{}
+		for _, element := range elements {
+			directed[element] = map[string]int{}
+		}
+		for _, pair := range shell.pairs {
+			a, b := species[pair[0]], species[pair[1]]
+			observedCount[pairKey(a, b)]++
+			directed[a][b]++
+			directed[b][a]++
+		}
+		observed, residuals, warrenCowley := map[PairKey]float64{}, map[PairKey]float64{}, map[PairKey]float64{}
+		shellSquared, shellMax := 0.0, 0.0
+		for key, target := range pairTarget {
+			observed[key] = float64(observedCount[key]) / float64(len(shell.pairs))
+			residuals[key] = observed[key] - target
+			shellSquared += residuals[key] * residuals[key]
+			shellMax = math.Max(shellMax, math.Abs(residuals[key]))
+			sumSquared += residuals[key] * residuals[key]
+			errorCount++
+		}
+		for _, center := range elements {
+			total := 0
+			for _, neighbor := range elements {
+				total += directed[center][neighbor]
+			}
+			for _, neighbor := range elements {
+				if total > 0 && concentrations[neighbor] > 0 {
+					warrenCowley[PairKey(center+"->"+neighbor)] = 1 - (float64(directed[center][neighbor])/float64(total))/concentrations[neighbor]
+				}
+			}
+		}
+		out.Shells = append(out.Shells, PairShellQuality{
+			ShellIndex: shell.index, Distance: shell.distance, PairCount: len(shell.pairs),
+			Observed: observed, Target: pairTarget, Errors: residuals,
+			RMS: math.Sqrt(shellSquared / float64(len(pairTarget))), MaxAbs: shellMax, WarrenCowley: warrenCowley,
+		})
+		out.MaxAbsPairError = math.Max(out.MaxAbsPairError, shellMax)
+	}
+	for index, cluster := range triplets {
+		counts := map[TripletKey]int{}
+		for _, sites := range cluster.triplets {
+			counts[tripletKey(species[sites[0]], species[sites[1]], species[sites[2]])]++
+		}
+		observed, residuals := map[TripletKey]float64{}, map[TripletKey]float64{}
+		clusterSquared, clusterMax := 0.0, 0.0
+		for key, target := range tripletTarget {
+			observed[key] = float64(counts[key]) / float64(len(cluster.triplets))
+			residuals[key] = observed[key] - target
+			clusterSquared += residuals[key] * residuals[key]
+			clusterMax = math.Max(clusterMax, math.Abs(residuals[key]))
+			sumSquared += residuals[key] * residuals[key]
+			errorCount++
+		}
+		out.TripletClusters = append(out.TripletClusters, TripletClusterQuality{
+			ClusterIndex: index + 1, ShellSignature: cluster.signature, TripletCount: len(cluster.triplets),
+			Observed: observed, Target: tripletTarget, Errors: residuals,
+			RMS: math.Sqrt(clusterSquared / float64(len(tripletTarget))), MaxAbs: clusterMax,
+		})
+		out.MaxAbsTripletError = math.Max(out.MaxAbsTripletError, clusterMax)
+	}
+	if errorCount > 0 {
+		out.Objective = math.Sqrt(sumSquared / float64(errorCount))
+	}
+	return out
+}
+
+func GenerateSQS(host Structure, alloc CompositionAllocation, seed int64, nShells, steps int, tol float64) (SQSResult, error) {
+	if steps < 0 {
+		return SQSResult{}, errors.New("steps must be non-negative")
+	}
+	shells, err := buildPairShells(host, nShells, tol)
+	if err != nil {
+		return SQSResult{}, err
+	}
+	triplets := buildTripletClusters(shells)
+	initial := RandomSubstitution(host, alloc, seed)
+	current := append([]string(nil), initial.Species...)
+	quality := sqsQuality(current, shells, triplets)
+	initialObjective := quality.Objective
+	best := append([]string(nil), current...)
+	bestQuality := quality
+	convergence := []float64{quality.Objective}
+	rng := rand.New(rand.NewSource(seed + 7919))
+	startTemperature, endTemperature := 0.02, 1e-4
+	for step := 0; step < steps; step++ {
+		i, j := rng.Intn(len(current)), rng.Intn(len(current))
+		if i == j || current[i] == current[j] {
+			convergence = append(convergence, bestQuality.Objective)
+			continue
+		}
+		current[i], current[j] = current[j], current[i]
+		candidate := sqsQuality(current, shells, triplets)
+		delta := candidate.Objective - quality.Objective
+		fraction := float64(step) / math.Max(1, float64(steps-1))
+		temperature := startTemperature * math.Pow(endTemperature/startTemperature, fraction)
+		accept := delta <= 0 || rng.Float64() < math.Exp(-delta/temperature)
+		if accept {
+			quality = candidate
+			if candidate.Objective < bestQuality.Objective-1e-15 {
+				bestQuality = candidate
+				best = append([]string(nil), current...)
+			}
+		} else {
+			current[i], current[j] = current[j], current[i]
+		}
+		convergence = append(convergence, bestQuality.Objective)
+	}
+	out := host
+	out.Species = best
+	out.Meta = cloneMeta(host.Meta)
+	out.Meta["model_kind"] = "sqs"
+	out.Meta["sqs_method"] = bestQuality.Method
+	out.Meta["sqs_verification_status"] = bestQuality.VerificationStatus
+	out.Meta["sqs_objective"] = bestQuality.Objective
+	return SQSResult{
+		Structure: out, Quality: bestQuality, InitialObjective: initialObjective,
+		Convergence: convergence, Seed: seed, Steps: steps,
+		Engine: fmt.Sprintf("TiModelCore pair/triplet probability annealer (%d pair shells, %d triplet geometries)", len(shells), len(triplets)),
+	}, nil
+}
