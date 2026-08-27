@@ -40,3 +40,11 @@
 - Root cause: residual squares were accumulated by ranging over Go maps. Random map iteration changed floating-point summation at the last bits, which could change simulated-annealing acceptance decisions.
 - Fix: pair and triplet correlation keys are sorted once and all objective accumulation follows that stable order.
 - Regression gate: the deterministic replay test is run hundreds of times locally before release, remains part of the normal Go suite, and is executed again inside the Windows installer build.
+
+## 2026-08-27 — PowerShell Start-Process does not quote spaced ArgumentList values
+
+- Trigger: the release gate changed its clean installation directory to `Ti Alloy Studio Clean Install`.
+- Symptom: the installer completed extraction but the CI step stayed in `Start-Process -Wait`; `--no-launch` had not taken effect.
+- Root cause: `Start-Process -ArgumentList @(..., $install, ...)` joined the array without quoting `$install`. A direct argv probe confirmed that the path arrived as five separate arguments. Go flag parsing stopped at the first stray positional token, so the later `--no-launch` option was ignored and the launched application kept the waited process tree alive.
+- Fix: the workflow passes one explicitly quoted command-line string, places `--no-launch` before the path option, and continues to verify the exact spaced installation directory.
+- Regression gate: every Windows release installs to a path containing spaces and must proceed from installation to installed smoke tests and uninstall without manual process termination.

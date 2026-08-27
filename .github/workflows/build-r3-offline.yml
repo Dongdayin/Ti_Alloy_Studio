@@ -86,7 +86,11 @@ jobs:
           $diag=Join-Path $env:RUNNER_TEMP 'TiAlloyStudio-install-error.log'
           Remove-Item $diag -Force -ErrorAction SilentlyContinue
           if (Test-Path $install) { Remove-Item $install -Recurse -Force }
-          $proc=Start-Process -FilePath '.\dist\TiAlloyStudio-Setup-x64-Offline.exe' -ArgumentList @('--quiet','--install-dir',$install,'--no-launch') -Wait -PassThru
+          # Start-Process joins an ArgumentList array into a command line without
+          # quoting individual values. Preserve the space-containing path as one
+          # argument and keep --no-launch before any possible positional token.
+          $installerArgs="--quiet --no-launch --install-dir `"$install`""
+          $proc=Start-Process -FilePath '.\dist\TiAlloyStudio-Setup-x64-Offline.exe' -ArgumentList $installerArgs -Wait -PassThru
           if ($proc.ExitCode -ne 0) {
             if (Test-Path $diag) {
               Write-Host '===== preserved installer diagnostic ====='
