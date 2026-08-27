@@ -34,30 +34,44 @@ type ExternalRunRecord struct {
 }
 
 type BuildRecord struct {
-	ID              string                 `json:"id"`
-	ParentID        string                 `json:"parent_id,omitempty"`
-	CreatedAt       string                 `json:"created_at"`
-	Module          string                 `json:"module"`
-	Request         BuildRequest           `json:"request"`
-	StructureSHA256 string                 `json:"structure_sha256"`
-	ExportSHA256    map[string]string      `json:"export_sha256"`
-	Validation      model.ValidationReport `json:"validation"`
-	Engines         []engines.Report       `json:"engines,omitempty"`
-	ExternalRuns    []ExternalRunRecord    `json:"external_runs,omitempty"`
+	ID              string                       `json:"id"`
+	ParentID        string                       `json:"parent_id,omitempty"`
+	CreatedAt       string                       `json:"created_at"`
+	Module          string                       `json:"module"`
+	Request         BuildRequest                 `json:"request"`
+	Structure       model.Structure              `json:"structure"`
+	StructureSHA256 string                       `json:"structure_sha256"`
+	ExportSHA256    map[string]string            `json:"export_sha256"`
+	Validation      model.ValidationReport       `json:"validation"`
+	Allocation      *model.CompositionAllocation `json:"allocation,omitempty"`
+	SQS             *model.SQSQuality            `json:"sqs,omitempty"`
+	ATAT            *engines.ATATQuality         `json:"atat,omitempty"`
+	Analysis        map[string]any               `json:"analysis,omitempty"`
+	Series          map[string]any               `json:"series,omitempty"`
+	Engines         []engines.Report             `json:"engines,omitempty"`
+	ExternalRuns    []ExternalRunRecord          `json:"external_runs,omitempty"`
+	ScientificState string                       `json:"scientific_state"`
 }
 
 type ProjectManifest struct {
-	SchemaVersion int           `json:"schema_version"`
-	ProjectID     string        `json:"project_uuid"`
-	Name          string        `json:"name"`
-	CreatedAt     string        `json:"created_at"`
-	UpdatedAt     string        `json:"updated_at"`
-	History       []BuildRecord `json:"history"`
+	SchemaVersion    int           `json:"schema_version"`
+	ProjectID        string        `json:"project_uuid"`
+	Name             string        `json:"name"`
+	CreatedAt        string        `json:"created_at"`
+	UpdatedAt        string        `json:"updated_at"`
+	ActiveRevisionID string        `json:"active_revision_id,omitempty"`
+	History          []BuildRecord `json:"history"`
 }
 
 type projectState struct {
 	mu       sync.Mutex
 	manifest ProjectManifest
+}
+
+type DeriveRequest struct {
+	Operation  string `json:"operation"`
+	SiteID     int    `json:"site_id"`
+	NewSpecies string `json:"new_species,omitempty"`
 }
 
 var projectRegistry sync.Map
@@ -244,10 +258,7 @@ func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) {
 	p := stateProject(s)
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	parent := ""
-	if n := len(p.manifest.History); n > 0 {
-		parent = p.manifest.History[n-1].ID
-	}
+	parent := p.manifest.ActiveRevisionID
 	now := timestampUTC()
 	p.manifest.History = append(p.manifest.History, BuildRecord{
 		ID:              newRecordID(),
@@ -255,13 +266,172 @@ func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) {
 		CreatedAt:       now,
 		Module:          out.Module,
 		Request:         req,
+		Structure:       out.Structure,
 		StructureSHA256: structureSHA256(out.Structure),
 		ExportSHA256:    exportHashes(out.Structure),
 		Validation:      out.Validation,
+		Allocation:      out.Allocation,
+		SQS:             out.SQS,
+		ATAT:            out.ATAT,
+		Analysis:        out.Analysis,
+		Series:          out.Series,
 		Engines:         out.Engines,
 		ExternalRuns:    externalRuns(out),
+		ScientificState: "not_relaxed",
 	})
+	p.manifest.ActiveRevisionID = p.manifest.History[len(p.manifest.History)-1].ID
 	p.manifest.UpdatedAt = now
+}
+
+func responseFromRecord(r BuildRecord) BuildResponse {
+	return BuildResponse{
+		Module: r.Module, Structure: r.Structure, Validation: r.Validation,
+		Allocation: r.Allocation, SQS: r.SQS, ATAT: r.ATAT,
+		Analysis: r.Analysis, Series: r.Series, Engines: r.Engines,
+	}
+}
+
+// SelectRevision makes an immutable historical snapshot active without
+// rebuilding it or appending to project history.
+func (s *State) SelectRevision(id string) (BuildResponse, error) {
+	p := stateProject(s)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, record := range p.manifest.History {
+		if record.ID != id {
+			continue
+		}
+		// JSON round-tripping provides a deep copy across the project boundary,
+		// including maps and slices nested in the structure and evidence.
+		b, _ := json.Marshal(record)
+		var cloned BuildRecord
+		if err := json.Unmarshal(b, &cloned); err != nil {
+			return BuildResponse{}, fmt.Errorf("clone revision %q: %w", id, err)
+		}
+		out := responseFromRecord(cloned)
+		s.mu.Lock()
+		s.Current = out
+		s.CurrentRequest = cloned.Request
+		s.mu.Unlock()
+		p.manifest.ActiveRevisionID = id
+		p.manifest.UpdatedAt = timestampUTC()
+		return out, nil
+	}
+	return BuildResponse{}, fmt.Errorf("revision %q not found", id)
+}
+
+func cloneBuildResponse(in BuildResponse) BuildResponse {
+	b, _ := json.Marshal(in)
+	var out BuildResponse
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+// BuildChild creates a successful new revision under the caller-selected
+// parent. Any build failure restores the previously active in-memory model and
+// leaves project history untouched.
+func (s *State) BuildChild(parentID string, req BuildRequest) (BuildResponse, error) {
+	p := stateProject(s)
+	p.mu.Lock()
+	found := false
+	for _, record := range p.manifest.History {
+		if record.ID == parentID {
+			found = true
+			break
+		}
+	}
+	p.mu.Unlock()
+	if !found {
+		return BuildResponse{}, fmt.Errorf("parent revision %q not found", parentID)
+	}
+
+	s.mu.RLock()
+	previous := cloneBuildResponse(s.Current)
+	previousRequest := s.CurrentRequest
+	s.mu.RUnlock()
+	out, err := s.BuildUser(req)
+	if err != nil {
+		s.mu.Lock()
+		s.Current = previous
+		s.CurrentRequest = previousRequest
+		s.mu.Unlock()
+		return BuildResponse{}, err
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.manifest.History) == 0 || p.manifest.History[len(p.manifest.History)-1].ID != p.manifest.ActiveRevisionID {
+		return BuildResponse{}, errors.New("new child revision was not recorded")
+	}
+	p.manifest.History[len(p.manifest.History)-1].ParentID = parentID
+	return out, nil
+}
+
+func (s *State) revisionSnapshot(id string) (BuildRecord, error) {
+	p := stateProject(s)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, record := range p.manifest.History {
+		if record.ID != id {
+			continue
+		}
+		b, _ := json.Marshal(record)
+		var cloned BuildRecord
+		if err := json.Unmarshal(b, &cloned); err != nil {
+			return BuildRecord{}, fmt.Errorf("clone revision %q: %w", id, err)
+		}
+		return cloned, nil
+	}
+	return BuildRecord{}, fmt.Errorf("revision %q not found", id)
+}
+
+// DeriveRevision applies a local defect operation to the exact selected
+// structure snapshot. It intentionally does not reconstruct a pristine host.
+func (s *State) DeriveRevision(parentID string, change DeriveRequest) (BuildResponse, error) {
+	parent, err := s.revisionSnapshot(parentID)
+	if err != nil {
+		return BuildResponse{}, err
+	}
+	operation := strings.ToLower(strings.TrimSpace(change.Operation))
+	var structure model.Structure
+	switch operation {
+	case "vacancy":
+		structure, err = model.CreateVacancy(parent.Structure, change.SiteID)
+	case "substitution":
+		structure, err = model.CreateSubstitution(parent.Structure, change.SiteID, strings.TrimSpace(change.NewSpecies))
+	default:
+		return BuildResponse{}, fmt.Errorf("unsupported derivation %q; choose vacancy or substitution", change.Operation)
+	}
+	if err != nil {
+		return BuildResponse{}, fmt.Errorf("derive %s from revision %q: %w", operation, parentID, err)
+	}
+
+	req := parent.Request
+	req.Module = operation
+	req.SiteID = change.SiteID
+	req.NewSpecies = strings.TrimSpace(change.NewSpecies)
+	out := BuildResponse{
+		Module: operation, Structure: structure,
+		Analysis: map[string]any{"site_id": change.SiteID, "derived_from_revision": parentID},
+		Series:   map[string]any{},
+	}
+	if operation == "substitution" {
+		out.Analysis["new_species"] = req.NewSpecies
+	}
+	out.Validation = model.ValidateStructure(out.Structure)
+	moduleValidation(&out)
+	out.Engines = engines.CrossCheck(out.Structure)
+
+	s.mu.Lock()
+	s.Current = cloneBuildResponse(out)
+	s.CurrentRequest = req
+	s.mu.Unlock()
+	recordTrackedBuild(s, req, out)
+	p := stateProject(s)
+	p.mu.Lock()
+	p.manifest.History[len(p.manifest.History)-1].ParentID = parentID
+	p.mu.Unlock()
+	return cloneBuildResponse(out), nil
 }
 
 func gsfeSeriesForRequest(req BuildRequest) model.GSFESeries {
