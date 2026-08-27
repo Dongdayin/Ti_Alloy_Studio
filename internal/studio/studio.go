@@ -1,6 +1,7 @@
 package studio
 
 import (
+	"errors"
 	"fmt"
 	"math"
 
@@ -80,8 +81,11 @@ func ScientificSmoke() (SmokeResult, error) {
 	}
 	child := revisions.ProjectManifest("").ActiveRevisionID
 	_, _, childXYZ, err := revisions.ExportRevision(child, "xyz")
-	if err != nil || childXYZ == rootXYZ {
-		return out, fmt.Errorf("revision smoke child export did not preserve a distinct edited structure: %w", err)
+	if err != nil {
+		return out, fmt.Errorf("revision smoke child export: %w", err)
+	}
+	if childXYZ == rootXYZ {
+		return out, errors.New("revision smoke child export did not preserve a distinct edited structure")
 	}
 	project, err := revisions.ExportProjectArchive("smoke path with spaces")
 	if err != nil {
@@ -92,8 +96,11 @@ func ScientificSmoke() (SmokeResult, error) {
 		return out, fmt.Errorf("revision smoke project reopen: %w", err)
 	}
 	_, _, reopenedRootXYZ, err := reopened.ExportRevision(root, "xyz")
-	if err != nil || reopenedRootXYZ != rootXYZ || len(reopened.ProjectManifest("").History) != 2 {
-		return out, fmt.Errorf("revision smoke project round trip changed history or root export: %w", err)
+	if err != nil {
+		return out, fmt.Errorf("revision smoke reopened root export: %w", err)
+	}
+	if reopenedRootXYZ != rootXYZ || len(reopened.ProjectManifest("").History) != 2 {
+		return out, errors.New("revision smoke project round trip changed history or root export")
 	}
 	out.Checks = append(out.Checks, "revision edit/export/project round trip")
 	return out, nil
