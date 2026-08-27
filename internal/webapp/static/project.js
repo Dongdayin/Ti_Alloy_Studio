@@ -49,6 +49,7 @@
     setNumber('atatPairCutoff', req.atat_pair_cutoff_angstrom); setNumber('atatTripletCutoff', req.atat_triplet_cutoff_angstrom); setNumber('atatRunSeconds', req.atat_run_seconds);
     if ($('eosRatios') && Array.isArray(req.eos_ratios)) $('eosRatios').value = req.eos_ratios.join(',');
     setText('gsfePreset', req.gsfe_preset);
+    $('phase')?.dispatchEvent(new Event('change', {bubbles:true}));
   }
 
   function compositionSummary(record) {

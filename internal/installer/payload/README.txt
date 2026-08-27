@@ -1,4 +1,4 @@
-Ti Alloy Studio 0.2.0 Phase 1 R8 Offline
+Ti Alloy Studio 0.2.0 Phase 1 R11 Offline
 
 This release is intended to be a single-install, pure Windows x64 titanium-alloy atomistic modeling workstation.
 

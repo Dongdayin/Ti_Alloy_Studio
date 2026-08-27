@@ -1,5 +1,12 @@
 # Lessons learned
 
+## Phase selection must update visible recipe controls immediately
+
+- Trigger: changing the Phase dropdown did not change the lattice, surface, or GSFE parameters shown below it.
+- Root cause: the frontend only read `phase` when the user clicked Generate; no change handler refreshed phase-specific controls.
+- Fix: add phase-specific form metadata, refresh visible lattice fields and phase-limited options on every Phase or module change, and run the same refresh when restoring a recipe from project history.
+- Regression gate: the web asset test requires the Phase hint, lattice summary, alpha/beta field markers, Phase change listener, phase-limited option syncing, and explicit hidden-control CSS.
+
 ## Acceptance evidence overwhelmed the normal modeling interface
 
 - Trigger: revision hashes, parent IDs, timestamps, scientific state codes, executable paths, package versions, and engine cross-check messages were all shown in the primary inspector.

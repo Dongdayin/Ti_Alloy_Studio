@@ -119,3 +119,24 @@ func TestWorkbenchKeepsTechnicalDiagnosticsOutOfThePrimaryInterface(t *testing.T
 		}
 	}
 }
+
+func TestPhaseSelectionRefreshesPhaseSpecificControls(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{`id="phaseHint"`, `id="latticeSummary"`, `data-phase-field="alpha"`, `data-phase-field="beta"`} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("phase-aware form markup missing %q", needle)
+		}
+	}
+
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{"function updatePhaseControls", "$('phase').addEventListener('change', updatePhaseControls)", "syncPhaseOptions('surfacePreset'", "syncPhaseOptions('gsfePreset'"} {
+		if !strings.Contains(appJS, needle) {
+			t.Errorf("phase-aware form behavior missing %q", needle)
+		}
+	}
+
+	css := strings.Join(strings.Fields(servedAsset(t, "/style.css")), "")
+	if !strings.Contains(css, "[hidden]{display:none!important}") {
+		t.Error("hidden phase-specific controls must stay hidden even when label display rules apply")
+	}
+}

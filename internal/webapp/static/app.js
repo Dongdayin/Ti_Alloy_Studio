@@ -9,6 +9,20 @@
     alpha: '#477fa8',
     beta: '#d48643'
   };
+  const phaseMetadata = {
+    alpha: {
+      hint: 'α-Ti uses HCP lattice parameters aα and cα.',
+      lattice: 'Lattice · α-Ti HCP',
+      surface: 'basal_0001',
+      gsfe: 'basal_a'
+    },
+    beta: {
+      hint: 'β-Ti uses one BCC lattice parameter aβ.',
+      lattice: 'Lattice · β-Ti BCC',
+      surface: '100',
+      gsfe: '110_111'
+    }
+  };
 
   let active = 'random';
   let model = null;
@@ -95,6 +109,43 @@
     };
   }
 
+  function currentPhase() {
+    return $('phase')?.value === 'beta' ? 'beta' : 'alpha';
+  }
+
+  function syncPhaseOptions(selectId, phase, fallback) {
+    const select = $(selectId);
+    if (!select) return;
+    let currentAllowed = false;
+    let firstAllowed = '';
+    Array.from(select.options).forEach((option) => {
+      const optionPhase = option.dataset.phaseOption || '';
+      const allowed = !optionPhase || optionPhase === phase;
+      option.hidden = !allowed;
+      option.disabled = !allowed;
+      if (allowed && !firstAllowed) firstAllowed = option.value;
+      if (allowed && option.value === select.value) currentAllowed = true;
+    });
+    if (!currentAllowed) select.value = fallback || firstAllowed;
+  }
+
+  function updatePhaseControls() {
+    const phase = currentPhase();
+    const meta = phaseMetadata[phase] || phaseMetadata.alpha;
+    const showBothLattices = active === 'interface';
+    document.querySelectorAll('[data-phase-field]').forEach((field) => {
+      field.hidden = !showBothLattices && field.dataset.phaseField !== phase;
+    });
+    if ($('phaseHint')) {
+      $('phaseHint').textContent = showBothLattices
+        ? 'α/β interface models use both α and β lattice values.'
+        : meta.hint;
+    }
+    if ($('latticeSummary')) $('latticeSummary').textContent = showBothLattices ? 'Lattice · α and β' : meta.lattice;
+    syncPhaseOptions('surfacePreset', phase, meta.surface);
+    syncPhaseOptions('gsfePreset', phase, meta.gsfe);
+  }
+
   function setModule(module) {
     active = module;
     document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.module === module));
@@ -106,6 +157,7 @@
     if (module === 'interface') $('interfaceControls').style.display = 'block';
     if (module === 'eos') $('eosControls').style.display = 'block';
     if (module === 'gsfe') $('gsfeControls').style.display = 'block';
+    updatePhaseControls();
     userEnergies = null;
     if ($('energies')) $('energies').value = '';
   }
@@ -787,6 +839,7 @@
   bindChartTooltip('analysisCanvas', 'chartTooltip');
 
   document.querySelectorAll('.nav').forEach((b) => { b.onclick = () => setModule(b.dataset.module); });
+  $('phase').addEventListener('change', updatePhaseControls);
   $('buildBtn').onclick = build;
   document.querySelectorAll('[data-export]').forEach((b) => {
     b.onclick = () => model

@@ -45,6 +45,7 @@
           <option value="beta">β-Ti · BCC</option>
         </select>
       </label>
+      <p id="phaseHint" class="micro">α-Ti uses HCP lattice parameters aα and cα.</p>
 
       <div class="triple">
         <label>Nx<input id="nx" type="number" min="1" value="4"></label>
@@ -62,11 +63,11 @@
       </details>
 
       <details open>
-        <summary>Lattice</summary>
+        <summary id="latticeSummary">Lattice · α-Ti HCP</summary>
         <div class="triple">
-          <label>aα Å<input id="aAlpha" type="number" step="0.001" value="2.951"></label>
-          <label>cα Å<input id="cAlpha" type="number" step="0.001" value="4.684"></label>
-          <label>aβ Å<input id="aBeta" type="number" step="0.001" value="3.306"></label>
+          <label data-phase-field="alpha">aα Å<input id="aAlpha" type="number" step="0.001" value="2.951"></label>
+          <label data-phase-field="alpha">cα Å<input id="cAlpha" type="number" step="0.001" value="4.684"></label>
+          <label data-phase-field="beta">aβ Å<input id="aBeta" type="number" step="0.001" value="3.306"></label>
         </div>
       </details>
 
@@ -135,9 +136,9 @@
         </div>
         <label>Surface preset
           <select id="surfacePreset">
-            <option value="basal_0001">α (0001) basal</option>
-            <option value="prismatic_10-10">α (10-10) prismatic</option>
-            <option value="100">β (100)</option>
+            <option value="basal_0001" data-phase-option="alpha">α (0001) basal</option>
+            <option value="prismatic_10-10" data-phase-option="alpha">α (10-10) prismatic</option>
+            <option value="100" data-phase-option="beta">β (100)</option>
           </select>
         </label>
         <label>Vacuum Å<input id="vacuum" type="number" value="15" step="0.5"></label>
@@ -165,9 +166,9 @@
       <div id="gsfeControls" class="conditional">
         <label>Slip system
           <select id="gsfePreset">
-            <option value="basal_a">α basal {0001}&lt;a&gt;</option>
-            <option value="prismatic_a">α prismatic {10-10}&lt;a&gt;</option>
-            <option value="110_111">β {110}&lt;111&gt;</option>
+            <option value="basal_a" data-phase-option="alpha">α basal {0001}&lt;a&gt;</option>
+            <option value="prismatic_a" data-phase-option="alpha">α prismatic {10-10}&lt;a&gt;</option>
+            <option value="110_111" data-phase-option="beta">β {110}&lt;111&gt;</option>
           </select>
         </label>
         <div class="double">
