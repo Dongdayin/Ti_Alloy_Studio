@@ -1,8 +1,9 @@
 (() => {
   'use strict';
-
   const $ = (id) => document.getElementById(id);
   const q = (sel) => document.querySelector(sel);
+  const editEndpoint = '/api/project/edit';
+  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 
   function notify(message) {
     const toast = $('toast');
@@ -19,146 +20,127 @@
     const panel = document.createElement('section');
     panel.className = 'panel';
     panel.id = 'projectPanel';
+    panel.dataset.mobileSection = 'export';
+    panel.dataset.editEndpoint = editEndpoint;
     panel.innerHTML = `
-      <div class="panelHead"><h2>Project / Reproducibility</h2><span id="projectHistoryCount">0 builds</span></div>
+      <div class="panelHead"><h2>Project / revisions</h2><span id="projectHistoryCount">0 revisions</span></div>
       <label>Project name<input id="projectName" value="Untitled Project" spellcheck="false"></label>
       <p id="projectIdentity" class="micro">Loading project identity…</p>
-      <div class="exportGrid">
-        <button id="projectExportBtn" type="button">Export project.json</button>
-        <button id="projectImportBtn" type="button">Import project.json</button>
-      </div>
-      <input id="projectImportFile" type="file" accept="application/json,.json" hidden>
-      <p class="micro">Each tracked generation records normalized parameters, random seed, validation, lineage and SHA-256 hashes for core structure exports.</p>`;
+      <div class="exportGrid"><button id="projectExportBtn" type="button">Save project package</button><button id="projectImportBtn" type="button">Open project package</button></div>
+      <input id="projectImportFile" type="file" accept="application/vnd.tialloystudio.project+zip,.tias-project" hidden>
+      <div id="revisionHistory" class="revisionHistory" aria-label="Model revision history"></div>
+      <p class="micro">Every successful model is an immutable revision. Select or export any revision, edit its recipe into a child, or derive a vacancy/substitution from its exact structure.</p>`;
     inspector.insertBefore(panel, inspector.firstChild);
   }
 
-  async function refreshProject(updateName = false) {
-    const name = $('projectName')?.value.trim() || '';
-    const url = `/api/project${updateName && name ? `?name=${encodeURIComponent(name)}` : ''}`;
-    try {
-      const response = await fetch(url, { cache: 'no-store' });
-      if (!response.ok) throw Error('Project status request failed');
-      const manifest = await response.json();
-      if ($('projectName') && (!updateName || !name)) $('projectName').value = manifest.name || 'Untitled Project';
-      if ($('projectIdentity')) $('projectIdentity').textContent = `UUID: ${manifest.project_uuid || '—'} · updated ${manifest.updated_at || '—'}`;
-      if ($('projectHistoryCount')) $('projectHistoryCount').textContent = `${(manifest.history || []).length} builds`;
-      return manifest;
-    } catch (error) {
-      if ($('projectIdentity')) $('projectIdentity').textContent = error.message;
-      return null;
-    }
-  }
-
-  async function downloadProject() {
-    const name = $('projectName')?.value.trim() || '';
-    await refreshProject(true);
-    try {
-      const response = await fetch(`/api/project/export?name=${encodeURIComponent(name)}`, { cache: 'no-store' });
-      if (!response.ok) throw Error('Project export failed');
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'project.json';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-      notify('project.json exported');
-    } catch (error) {
-      notify(error.message);
-    }
-  }
-
-  function setNumber(id, value) {
-    if ($(id) && Number.isFinite(Number(value))) $(id).value = String(value);
-  }
-  function setText(id, value) {
-    if ($(id) && value !== undefined && value !== null) $(id).value = String(value);
-  }
-
+  function setNumber(id, value) { if ($(id) && Number.isFinite(Number(value))) $(id).value = String(value); }
+  function setText(id, value) { if ($(id) && value !== undefined && value !== null) $(id).value = String(value); }
   function restoreControls(req) {
     const module = String(req.module || 'random').toLowerCase();
     let navModule = module;
     if (module === 'crystal' || module === 'random') navModule = 'random';
     if (module === 'vacancy' || module === 'substitution' || module === 'surface') navModule = 'vacancy';
     q(`.nav[data-module="${navModule}"]`)?.click();
-
     setText('phase', req.phase || 'alpha');
-    setNumber('nx', req.nx);
-    setNumber('ny', req.ny);
-    setNumber('nz', req.nz);
-    setNumber('targetX', req.target_x);
-    setNumber('targetY', req.target_y);
-    setNumber('targetZ', req.target_z);
-    setNumber('aAlpha', req.a_alpha);
-    setNumber('cAlpha', req.c_alpha);
-    setNumber('aBeta', req.a_beta);
-    setNumber('seed', req.seed);
-    if ($('composition') && req.composition_wt) {
-      $('composition').value = Object.entries(req.composition_wt)
-        .filter(([e]) => e !== 'Ti')
-        .map(([e, v]) => `${e}=${v}`)
-        .join(',');
-    }
-    if ($('alloyType') && (module === 'random' || module === 'crystal')) $('alloyType').value = module;
-    if ($('defectType') && ['vacancy', 'substitution', 'surface'].includes(module)) $('defectType').value = module;
-    setText('newSpecies', req.new_species);
-    setText('surfacePreset', req.surface_preset);
-    setNumber('vacuum', req.vacuum);
-    setText('sqsBackend', req.sqs_backend || 'atat');
-    setNumber('sqsSteps', req.sqs_steps);
-    setNumber('sqsShells', req.sqs_shells);
-    setText('atatDistro', req.atat_distro || '');
-    setNumber('atatPairCutoff', req.atat_pair_cutoff_angstrom);
-    setNumber('atatTripletCutoff', req.atat_triplet_cutoff_angstrom);
-    setNumber('atatRunSeconds', req.atat_run_seconds);
-    setNumber('siteId', req.site_id);
-    setNumber('interfaceMax', req.interface_max_repeat);
-    setNumber('interfaceCandidate', req.interface_candidate);
-    setNumber('interfaceDistance', req.interface_distance);
+    for (const [id, key] of [['nx','nx'],['ny','ny'],['nz','nz'],['targetX','target_x'],['targetY','target_y'],['targetZ','target_z'],['aAlpha','a_alpha'],['cAlpha','c_alpha'],['aBeta','a_beta'],['seed','seed'],['sqsSteps','sqs_steps'],['sqsShells','sqs_shells'],['siteId','site_id'],['vacuum','vacuum'],['interfaceMax','interface_max_repeat'],['interfaceCandidate','interface_candidate'],['interfaceDistance','interface_distance'],['eosIndex','eos_index'],['gsfeSteps','gsfe_steps'],['gsfeIndex','gsfe_index']]) setNumber(id, req[key]);
+    if ($('composition') && req.composition_wt) $('composition').value = Object.entries(req.composition_wt).filter(([element]) => element !== 'Ti').map(([element,value]) => `${element}=${value}`).join(',');
+    if ($('alloyType') && ['random','crystal'].includes(module)) $('alloyType').value = module;
+    if ($('defectType') && ['vacancy','substitution','surface'].includes(module)) $('defectType').value = module;
+    setText('newSpecies', req.new_species); setText('surfacePreset', req.surface_preset); setText('sqsBackend', req.sqs_backend || 'native'); setText('atatDistro', req.atat_distro || '');
+    setNumber('atatPairCutoff', req.atat_pair_cutoff_angstrom); setNumber('atatTripletCutoff', req.atat_triplet_cutoff_angstrom); setNumber('atatRunSeconds', req.atat_run_seconds);
     if ($('eosRatios') && Array.isArray(req.eos_ratios)) $('eosRatios').value = req.eos_ratios.join(',');
-    setNumber('eosIndex', req.eos_index);
     setText('gsfePreset', req.gsfe_preset);
-    setNumber('gsfeSteps', req.gsfe_steps);
-    setNumber('gsfeIndex', req.gsfe_index);
+  }
+
+  function compositionSummary(record) {
+    const counts = {};
+    for (const element of record.structure?.species || []) counts[element] = (counts[element] || 0) + 1;
+    return Object.entries(counts).map(([element,count]) => `${element}${count}`).join(' / ') || 'no atoms';
+  }
+
+  function renderHistory(manifest) {
+    const container = $('revisionHistory');
+    if (!container) return;
+    const revisions = [...(manifest.history || [])].reverse();
+    container.innerHTML = revisions.map((record) => {
+      const active = record.id === manifest.active_revision_id;
+      return `<article class="revisionCard${active ? ' active' : ''}" data-revision-id="${esc(record.id)}"><header><strong>${active ? 'Active · ' : ''}${esc(record.module)} · ${esc(record.id.slice(0,8))}</strong><span>${esc(record.scientific_state || 'not_calculated')}</span></header><p>${esc(compositionSummary(record))} · ${(record.structure?.species || []).length} atoms<br>parent ${esc(record.parent_id ? record.parent_id.slice(0,8) : 'root')} · ${esc(record.created_at || '')}</p><div class="revisionActions"><button type="button" data-revision-select="${esc(record.id)}">View</button><button type="button" data-revision-edit="${esc(record.id)}">Edit recipe</button><button type="button" data-revision-derive="vacancy" data-parent="${esc(record.id)}">Vacancy</button><button type="button" data-revision-derive="substitution" data-parent="${esc(record.id)}">Substitute</button></div></article>`;
+    }).join('') || '<p class="micro">Generate a model to create the first revision.</p>';
+  }
+
+  async function refreshProject(updateName = false) {
+    const name = $('projectName')?.value.trim() || '';
+    const url = `/api/project${updateName && name ? `?name=${encodeURIComponent(name)}` : ''}`;
+    try {
+      const response = await fetch(url, {cache:'no-store'});
+      if (!response.ok) throw Error('Project status request failed');
+      const manifest = await response.json();
+      if ($('projectName') && (!updateName || !name)) $('projectName').value = manifest.name || 'Untitled Project';
+      if ($('projectIdentity')) $('projectIdentity').textContent = `UUID: ${manifest.project_uuid || '—'} · schema ${manifest.schema_version} · updated ${manifest.updated_at || '—'}`;
+      if ($('projectHistoryCount')) $('projectHistoryCount').textContent = `${(manifest.history || []).length} revisions`;
+      window.TiAlloyStudio?.setActiveRevision(manifest.active_revision_id || '');
+      renderHistory(manifest);
+      return manifest;
+    } catch (error) { if ($('projectIdentity')) $('projectIdentity').textContent = error.message; return null; }
+  }
+
+  async function loadRevision(id) {
+    const response = await fetch(`/api/project/revision?id=${encodeURIComponent(id)}`, {cache:'no-store'});
+    const record = await response.json();
+    if (!response.ok) throw Error(record.error || 'Revision load failed');
+    window.TiAlloyStudio?.showRevision(record);
+    return record;
+  }
+
+  async function selectRevision(id) {
+    const response = await fetch('/api/project/select', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision_id:id})});
+    const manifest = await response.json();
+    if (!response.ok) throw Error(manifest.error || 'Revision selection failed');
+    await loadRevision(id); renderHistory(manifest); window.TiAlloyStudio?.setActiveRevision(id); notify('Historical revision selected');
+  }
+
+  async function deriveRevision(parentID, operation) {
+    const body = {parent_revision_id:parentID,operation,site_id:Number($('siteId')?.value || 0)};
+    if (operation === 'substitution') body.new_species = $('newSpecies')?.value.trim() || 'Al';
+    const response = await fetch('/api/project/derive', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const manifest = await response.json();
+    if (!response.ok) throw Error(manifest.error || 'Structure derivation failed');
+    await loadRevision(manifest.active_revision_id); renderHistory(manifest); notify(`${operation} revision created from the selected structure`);
+  }
+
+  async function downloadProject() {
+    const name = $('projectName')?.value.trim() || '';
+    await refreshProject(true);
+    try {
+      const response = await fetch(`/api/project/export?name=${encodeURIComponent(name)}`, {cache:'no-store'});
+      if (!response.ok) throw Error('Project package export failed');
+      const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = `${(name || 'TiAlloyStudio-project').replace(/[\\/:*?"<>|]+/g,'_')}.tias-project`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500); notify('Portable project package saved');
+    } catch (error) { notify(error.message); }
   }
 
   async function importProject(file) {
     try {
-      const text = await file.text();
-      const manifest = JSON.parse(text);
-      const history = manifest.history || [];
-      if (!history.length) throw Error('Project history is empty');
-      const response = await fetch('/api/project/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(manifest)
-      });
+      const response = await fetch('/api/project/import', {method:'POST',headers:{'Content-Type':'application/vnd.tialloystudio.project+zip'},body:file});
       const payload = await response.json();
       if (!response.ok) throw Error(payload.error || 'Project import failed');
-      if ($('projectName')) $('projectName').value = manifest.name || 'Imported Project';
-      restoreControls(history[history.length - 1].request || {});
-      // The server has already restored the referenced state. Regenerate once
-      // through the normal tracked GUI path so the visible model and controls
-      // are guaranteed to match the restored recipe on this client.
-      $('buildBtn')?.click();
-      setTimeout(() => refreshProject(false), 900);
-      notify('Project imported and recipe restored');
-    } catch (error) {
-      notify(`Project import: ${error.message}`);
-    }
+      const manifest = await refreshProject(false); const record = await loadRevision(manifest.active_revision_id); restoreControls(record.request || {}); notify('Project package opened without duplicating its history');
+    } catch (error) { notify(`Project import: ${error.message}`); }
   }
 
   installProjectPanel();
   $('projectExportBtn')?.addEventListener('click', downloadProject);
   $('projectImportBtn')?.addEventListener('click', () => $('projectImportFile')?.click());
-  $('projectImportFile')?.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (file) importProject(file);
-    e.target.value = '';
-  });
+  $('projectImportFile')?.addEventListener('change', (event) => { const file = event.target.files?.[0]; if (file) importProject(file); event.target.value = ''; });
   $('projectName')?.addEventListener('change', () => refreshProject(true));
-  $('buildBtn')?.addEventListener('click', () => setTimeout(() => refreshProject(false), 800));
+  $('buildBtn')?.addEventListener('click', () => setTimeout(() => refreshProject(false), 500));
+  $('revisionHistory')?.addEventListener('click', async (event) => {
+    const select = event.target.closest('[data-revision-select]'); const edit = event.target.closest('[data-revision-edit]'); const derive = event.target.closest('[data-revision-derive]');
+    try {
+      if (select) await selectRevision(select.dataset.revisionSelect);
+      if (edit) { const record = await loadRevision(edit.dataset.revisionEdit); restoreControls(record.request || {}); window.TiAlloyStudio?.editFromRevision(record.id); window.TiAlloyStudio?.switchMobilePanel('model'); notify('Recipe restored. Change parameters and generate to create a child revision.'); }
+      if (derive) await deriveRevision(derive.dataset.parent, derive.dataset.revisionDerive);
+    } catch (error) { notify(error.message); }
+  });
   refreshProject(false);
 })();

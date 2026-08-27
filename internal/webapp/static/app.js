@@ -22,6 +22,8 @@
   let drag = null;
   let chartData = { composition: [], analysis: [] };
   let userEnergies = null;
+	let activeRevisionID = '';
+	let pendingEditParentID = '';
 
   const num = (id) => Number($(id).value) || 0;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
@@ -111,17 +113,29 @@
   async function build() {
     try {
       $('statusBadge').textContent = 'Building…';
-      const response = await fetch('/api/build', {
+	  const target = pendingEditParentID ? '/api/project/edit' : '/api/build';
+	  const body = pendingEditParentID
+	    ? { parent_revision_id: pendingEditParentID, request: requestPayload() }
+	    : requestPayload();
+      const response = await fetch(target, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload())
+		body: JSON.stringify(body)
       });
       const payload = await response.json();
       if (!response.ok) throw Error(payload.error || 'Build failed');
-      model = payload;
+	  if (pendingEditParentID) {
+		activeRevisionID = payload.active_revision_id || '';
+		const revisionResponse = await fetch(`/api/project/revision?id=${encodeURIComponent(activeRevisionID)}`, { cache: 'no-store' });
+		if (!revisionResponse.ok) throw Error('Edited revision could not be loaded');
+		showRevision(await revisionResponse.json());
+		pendingEditParentID = '';
+	  } else {
+		model = payload;
+	  }
       selected = -1;
       userEnergies = null;
-      render();
+	  if (!pendingEditParentID) render();
       $('statusBadge').textContent = 'Model ready';
     } catch (error) {
       $('statusBadge').textContent = 'Error';
@@ -655,29 +669,64 @@
     $('gsfeBatchBtn').disabled = model.module !== 'gsfe';
   }
 
-  async function refreshEnvironment() {
-    const summary = $('environmentSummary');
-    const panel = $('environmentPanel');
+	function showRevision(record) {
+	  model = {
+		module: record.module,
+		structure: record.structure,
+		validation: record.validation,
+		allocation: record.allocation,
+		sqs: record.sqs,
+		atat: record.atat,
+		analysis: record.analysis || {},
+		series: record.series || {},
+		engines: record.engines || []
+	  };
+	  activeRevisionID = record.id || activeRevisionID;
+	  selected = -1;
+	  userEnergies = null;
+	  if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `Revision ${activeRevisionID.slice(0, 8)}` : 'No active revision';
+	  render();
+	}
+
+  async function refreshCapabilities() {
+    const summary = $('capabilitySummary');
+    const panel = $('capabilityPanel');
     if (!summary || !panel) return;
-    summary.textContent = 'Detecting Windows / WSL tools…';
+    summary.textContent = 'Checking the private offline modeling package…';
     try {
-      const distro = $('atatDistro')?.value.trim() || '';
-      const response = await fetch(`/api/environment?distro=${encodeURIComponent(distro)}`, { cache: 'no-store' });
-      if (!response.ok) throw Error('Environment detection failed');
-      const env = await response.json();
-      summary.textContent = env.wsl_available
-        ? `${env.host_os}/${env.host_arch} · WSL: ${env.selected_distro || 'no distribution selected'}`
-        : `${env.host_os}/${env.host_arch} · WSL unavailable`;
-      panel.innerHTML = (env.tools || []).map((tool) => {
-        const css = tool.status === 'AVAILABLE' ? 'PASS' : 'UNAVAILABLE';
-        const details = [tool.path, tool.version, tool.message].filter(Boolean).map(esc).join('<br>');
-        return `<div class="engineCard ${css}"><header><strong>${esc(tool.name)}</strong><span>${esc(tool.status)}</span></header><p>${details || '—'}</p><small>${esc(tool.scope || '')}</small></div>`;
+      const response = await fetch('/api/capabilities', { cache: 'no-store' });
+      if (!response.ok) throw Error('Capability check failed');
+      const report = await response.json();
+	  const visible = (report.capabilities || []).filter((item) => item.category !== 'external_connector');
+	  const ready = visible.filter((item) => item.status === 'AVAILABLE' || item.status === 'SUPPORTED').length;
+	  summary.textContent = `${report.host_os}/${report.host_arch} · ${ready}/${visible.length} bundled modeling capabilities ready`;
+      panel.innerHTML = visible.map((item) => {
+		const details = [item.message, item.path].filter(Boolean).map(esc).join('<br>');
+		return `<div class="engineCard ${esc(item.status)}"><header><strong>${esc(item.name)}</strong><span>${esc(item.status)}</span></header><p>${details || '—'}</p></div>`;
       }).join('');
     } catch (error) {
       summary.textContent = error.message;
       panel.innerHTML = '';
     }
   }
+
+	async function probeConnectors() {
+	  const panel = $('connectorPanel');
+	  if (!panel) return;
+	  panel.innerHTML = '<p class="micro">Probing optional connectors…</p>';
+	  try {
+		const distro = $('atatDistro')?.value.trim() || '';
+		const response = await fetch(`/api/connectors?probe=true&distro=${encodeURIComponent(distro)}`, { cache: 'no-store' });
+		if (!response.ok) throw Error('Optional connector probe failed');
+		const payload = await response.json();
+		panel.innerHTML = (payload.report?.tools || []).map((tool) => {
+		  const details = [tool.path, tool.version, tool.message].filter(Boolean).map(esc).join('<br>');
+		  return `<div class="engineCard ${esc(tool.status)}"><header><strong>${esc(tool.name)}</strong><span>${esc(tool.status)}</span></header><p>${details || '—'}</p></div>`;
+		}).join('');
+	  } catch (error) {
+		panel.textContent = error.message;
+	  }
+	}
 
   async function downloadBlob(url, fallback) {
     try {
@@ -738,14 +787,14 @@
   $('buildBtn').onclick = build;
   document.querySelectorAll('[data-export]').forEach((b) => {
     b.onclick = () => model
-      ? downloadBlob(`/api/export?format=${b.dataset.export}`, 'model.dat')
+	  ? downloadBlob(`/api/export?format=${b.dataset.export}${activeRevisionID ? `&revision_id=${encodeURIComponent(activeRevisionID)}` : ''}`, 'model.dat')
       : toast('Generate a model first');
   });
   $('eosBatchBtn').onclick = () => downloadBlob('/api/export-batch?format=poscar', 'TiAlloyStudio-EOS-POSCAR.zip');
   $('gsfeBatchBtn').onclick = () => downloadBlob('/api/export-batch?format=poscar', 'TiAlloyStudio-GSFE-POSCAR.zip');
   $('manualBtn').onclick = () => downloadBlob('/manual', 'TiAlloyStudio-Manual.docx');
-  $('refreshEnv').onclick = refreshEnvironment;
-  $('atatDistro').addEventListener('change', refreshEnvironment);
+	$('refreshCapabilities').onclick = refreshCapabilities;
+	$('probeConnectors').onclick = probeConnectors;
   $('applyEnergy').onclick = applyEnergies;
   $('exitBtn').onclick = () => fetch('/api/exit', { method: 'POST' });
   window.addEventListener('resize', () => {
@@ -758,7 +807,31 @@
     .then((j) => { $('versionBadge').textContent = `${j.version} · ${j.engine}`; })
     .catch(() => {});
 
+	function switchMobilePanel(panel) {
+	  document.body.dataset.mobilePanel = panel;
+	  document.querySelectorAll('.mobileTabs [data-mobile-panel]').forEach((button) => {
+		const selectedPanel = button.dataset.mobilePanel === panel;
+		button.classList.toggle('active', selectedPanel);
+		button.setAttribute('aria-selected', String(selectedPanel));
+	  });
+	  window.dispatchEvent(new Event('resize'));
+	}
+	document.querySelectorAll('.mobileTabs [data-mobile-panel]').forEach((button) => {
+	  button.addEventListener('click', () => switchMobilePanel(button.dataset.mobilePanel));
+	});
+
+	window.TiAlloyStudio = {
+	  showRevision,
+	  setActiveRevision(id) {
+		activeRevisionID = id || '';
+		if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `Revision ${activeRevisionID.slice(0, 8)}` : 'No active revision';
+	  },
+	  editFromRevision(id) { pendingEditParentID = id || ''; },
+	  switchMobilePanel,
+	  get activeRevisionID() { return activeRevisionID; }
+	};
+
   setModule('random');
-  refreshEnvironment();
+	refreshCapabilities();
   build();
 })();

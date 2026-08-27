@@ -6,7 +6,7 @@
   <title>Ti Alloy Studio</title>
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body data-mobile-panel="model">
 <header class="topbar">
   <div>
     <strong>Ti Alloy Studio</strong>
@@ -20,8 +20,15 @@
   </div>
 </header>
 
+<nav class="mobileTabs" aria-label="Workspace sections">
+  <button type="button" class="active" data-mobile-panel="model" aria-selected="true">Model</button>
+  <button type="button" data-mobile-panel="structure" aria-selected="false">Structure</button>
+  <button type="button" data-mobile-panel="validation" aria-selected="false">Validation</button>
+  <button type="button" data-mobile-panel="export" aria-selected="false">Export</button>
+</nav>
+
 <main class="layout">
-  <aside class="sidebar">
+  <aside class="sidebar" data-workspace-panel="model">
     <h2>Model recipe</h2>
     <nav id="moduleNav">
       <button class="nav active" data-module="random">Crystal / Alloy</button>
@@ -78,8 +85,7 @@
       <div id="sqsControls" class="conditional">
         <label>SQS backend
           <select id="sqsBackend">
-            <option value="preview">TiModelCore pair-SQS · Windows built-in</option>
-            <option value="atat">ATAT / mcsqs · advanced external route</option>
+            <option value="native">TiModelCore correlation SQS · built in</option>
           </select>
         </label>
         <p class="micro">
@@ -92,8 +98,8 @@
             <label>Optimization steps<input id="sqsSteps" type="number" value="500" min="1"></label>
           </div>
         </details>
-        <details>
-          <summary>ATAT / mcsqs advanced settings</summary>
+        <details class="legacyConnector">
+          <summary>Legacy ATAT connector settings (optional)</summary>
           <div class="double">
             <label>WSL distro
               <input id="atatDistro" value="" placeholder="blank = WSL default">
@@ -175,7 +181,7 @@
     </section>
   </aside>
 
-  <section class="workspace">
+  <section class="workspace" data-workspace-panel="structure">
     <div class="panel viewerPanel">
       <div class="panelHead">
         <div><h2>3D Structure</h2><span id="structureSummary">—</span></div>
@@ -224,30 +230,36 @@
     </div>
   </section>
 
-  <aside class="inspector">
-    <section class="panel info">
+  <aside class="inspector" data-workspace-panel="validation-export">
+    <section class="panel info" data-mobile-section="validation">
       <h2>Model information</h2>
       <dl id="modelInfo"><dt>Status</dt><dd>No model</dd></dl>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-mobile-section="validation">
       <div class="panelHead"><h2>Validation</h2><span id="validationStatus" class="badge">—</span></div>
       <div id="validationPanel" class="checks"></div>
     </section>
 
-    <section class="panel">
-      <div class="panelHead"><h2>Environment</h2><button id="refreshEnv" type="button">Refresh</button></div>
-      <p id="environmentSummary" class="micro">Detecting Windows / WSL tools…</p>
-      <div id="environmentPanel" class="enginePanel"></div>
+    <section class="panel" data-mobile-section="export">
+      <div class="panelHead"><h2>Bundled modeling capabilities</h2><button id="refreshCapabilities" type="button">Refresh</button></div>
+      <p id="capabilitySummary" class="micro">Checking the private offline modeling package…</p>
+      <div id="capabilityPanel" class="enginePanel"></div>
+      <details class="connectorDetails">
+        <summary>Optional connectors</summary>
+        <p class="micro">Not required for modeling, project files, or structure export. Probe only when you intentionally use a legacy external workflow.</p>
+        <button id="probeConnectors" type="button">Probe this computer</button>
+        <div id="connectorPanel" class="enginePanel"></div>
+      </details>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-mobile-section="validation">
       <div class="panelHead"><h2>Independent engines</h2><span>actual calls</span></div>
       <div id="enginePanel" class="enginePanel"></div>
     </section>
 
-    <section class="panel">
-      <h2>Export</h2>
+    <section class="panel" data-mobile-section="export">
+      <div class="panelHead"><h2>Export</h2><span id="activeRevisionLabel">No active revision</span></div>
       <div class="exportGrid">
         <button data-export="poscar">VASP POSCAR</button>
         <button data-export="xyz">XYZ</button>
