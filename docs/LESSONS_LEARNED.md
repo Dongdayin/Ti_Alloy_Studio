@@ -32,3 +32,11 @@
 - Root cause: `body` enforced a 1024/940 px minimum width while the page disabled normal document scrolling.
 - Fix: widths below 1100 px use four accessible workspace tabs—Model, Structure, Validation and Export—with normal vertical scrolling and no fixed body minimum.
 - Regression gate: web tests reject the former minimum-width declarations and require the narrow-screen tabs, active revision label and revision controls.
+
+## 2026-08-27 — Seeded optimization is not deterministic if floating residuals iterate over maps
+
+- Trigger: the new native pair/triplet SQS deterministic replay test ran on the Windows release builder.
+- Symptom: identical inputs and random seed occasionally produced different optimized species arrangements or evidence, although single local runs often passed.
+- Root cause: residual squares were accumulated by ranging over Go maps. Random map iteration changed floating-point summation at the last bits, which could change simulated-annealing acceptance decisions.
+- Fix: pair and triplet correlation keys are sorted once and all objective accumulation follows that stable order.
+- Regression gate: the deterministic replay test is run hundreds of times locally before release, remains part of the normal Go suite, and is executed again inside the Windows installer build.

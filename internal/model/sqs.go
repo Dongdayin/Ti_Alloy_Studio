@@ -237,10 +237,30 @@ func tripletTargets(elements []string, concentrations map[string]float64) map[Tr
 	return targets
 }
 
+func sortedPairKeys(values map[PairKey]float64) []PairKey {
+	keys := make([]PairKey, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	return keys
+}
+
+func sortedTripletKeys(values map[TripletKey]float64) []TripletKey {
+	keys := make([]TripletKey, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	return keys
+}
+
 func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster) SQSQuality {
 	elements, concentrations := concentrationData(species)
 	pairTarget := pairTargets(elements, concentrations)
 	tripletTarget := tripletTargets(elements, concentrations)
+	pairKeys := sortedPairKeys(pairTarget)
+	tripletKeys := sortedTripletKeys(tripletTarget)
 	out := SQSQuality{Method: "pair_triplet_correlation_sqs", VerificationStatus: "not_atat_verified"}
 	sumSquared, errorCount := 0.0, 0
 	for _, shell := range shells {
@@ -257,7 +277,8 @@ func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster)
 		}
 		observed, residuals, warrenCowley := map[PairKey]float64{}, map[PairKey]float64{}, map[PairKey]float64{}
 		shellSquared, shellMax := 0.0, 0.0
-		for key, target := range pairTarget {
+		for _, key := range pairKeys {
+			target := pairTarget[key]
 			observed[key] = float64(observedCount[key]) / float64(len(shell.pairs))
 			residuals[key] = observed[key] - target
 			shellSquared += residuals[key] * residuals[key]
@@ -290,7 +311,8 @@ func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster)
 		}
 		observed, residuals := map[TripletKey]float64{}, map[TripletKey]float64{}
 		clusterSquared, clusterMax := 0.0, 0.0
-		for key, target := range tripletTarget {
+		for _, key := range tripletKeys {
+			target := tripletTarget[key]
 			observed[key] = float64(counts[key]) / float64(len(cluster.triplets))
 			residuals[key] = observed[key] - target
 			clusterSquared += residuals[key] * residuals[key]
