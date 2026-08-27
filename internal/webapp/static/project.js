@@ -23,13 +23,12 @@
     panel.dataset.mobileSection = 'export';
     panel.dataset.editEndpoint = editEndpoint;
     panel.innerHTML = `
-      <div class="panelHead"><h2>Project / revisions</h2><span id="projectHistoryCount">0 revisions</span></div>
+      <div class="panelHead"><h2>Project</h2><span id="projectHistoryCount">0 versions</span></div>
       <label>Project name<input id="projectName" value="Untitled Project" spellcheck="false"></label>
-      <p id="projectIdentity" class="micro">Loading project identity…</p>
-      <div class="exportGrid"><button id="projectExportBtn" type="button">Save project package</button><button id="projectImportBtn" type="button">Open project package</button></div>
+      <div class="exportGrid"><button id="projectExportBtn" type="button">Save project</button><button id="projectImportBtn" type="button">Open project</button></div>
       <input id="projectImportFile" type="file" accept="application/vnd.tialloystudio.project+zip,.tias-project" hidden>
       <div id="revisionHistory" class="revisionHistory" aria-label="Model revision history"></div>
-      <p class="micro">Every successful model is an immutable revision. Select or export any revision, edit its recipe into a child, or derive a vacancy/substitution from its exact structure.</p>`;
+      <p class="micro">Each successful model is saved as a version. Earlier versions remain available when you continue editing.</p>`;
     inspector.insertBefore(panel, inspector.firstChild);
   }
 
@@ -58,13 +57,17 @@
     return Object.entries(counts).map(([element,count]) => `${element}${count}`).join(' / ') || 'no atoms';
   }
 
+  function moduleLabel(module) {
+    return ({random:'Random alloy',crystal:'Crystal',sqs:'SQS alloy',vacancy:'Vacancy',substitution:'Atom replacement',surface:'Surface',interface:'α/β interface',eos:'EOS structures',gsfe:'GSFE structures'})[module] || 'Structure';
+  }
+
   function renderHistory(manifest) {
     const container = $('revisionHistory');
     if (!container) return;
-    const revisions = [...(manifest.history || [])].reverse();
-    container.innerHTML = revisions.map((record) => {
+    const revisions = (manifest.history || []).map((record, index) => ({record, number:index + 1})).reverse();
+    container.innerHTML = revisions.map(({record, number}) => {
       const active = record.id === manifest.active_revision_id;
-      return `<article class="revisionCard${active ? ' active' : ''}" data-revision-id="${esc(record.id)}"><header><strong>${active ? 'Active · ' : ''}${esc(record.module)} · ${esc(record.id.slice(0,8))}</strong><span>${esc(record.scientific_state || 'not_calculated')}</span></header><p>${esc(compositionSummary(record))} · ${(record.structure?.species || []).length} atoms<br>parent ${esc(record.parent_id ? record.parent_id.slice(0,8) : 'root')} · ${esc(record.created_at || '')}</p><div class="revisionActions"><button type="button" data-revision-select="${esc(record.id)}">View</button><button type="button" data-revision-edit="${esc(record.id)}">Edit recipe</button><button type="button" data-revision-derive="vacancy" data-parent="${esc(record.id)}">Vacancy</button><button type="button" data-revision-derive="substitution" data-parent="${esc(record.id)}">Substitute</button></div></article>`;
+      return `<article class="revisionCard${active ? ' active' : ''}" data-revision-id="${esc(record.id)}"><header><strong>Version ${number}${active ? ' · Current' : ''}</strong><span>${esc(moduleLabel(record.module))}</span></header><p>${esc(compositionSummary(record))} · ${(record.structure?.species || []).length} atoms</p><div class="revisionActions"><button type="button" data-revision-select="${esc(record.id)}">View</button><button type="button" data-revision-edit="${esc(record.id)}">Continue editing</button></div><details class="revisionMore"><summary>More actions</summary><div class="revisionActions"><button type="button" data-revision-derive="vacancy" data-parent="${esc(record.id)}">Create vacancy</button><button type="button" data-revision-derive="substitution" data-parent="${esc(record.id)}">Replace atom</button></div></details></article>`;
     }).join('') || '<p class="micro">Generate a model to create the first revision.</p>';
   }
 
@@ -76,12 +79,11 @@
       if (!response.ok) throw Error('Project status request failed');
       const manifest = await response.json();
       if ($('projectName') && (!updateName || !name)) $('projectName').value = manifest.name || 'Untitled Project';
-      if ($('projectIdentity')) $('projectIdentity').textContent = `UUID: ${manifest.project_uuid || '—'} · schema ${manifest.schema_version} · updated ${manifest.updated_at || '—'}`;
-      if ($('projectHistoryCount')) $('projectHistoryCount').textContent = `${(manifest.history || []).length} revisions`;
+      if ($('projectHistoryCount')) $('projectHistoryCount').textContent = `${(manifest.history || []).length} versions`;
       window.TiAlloyStudio?.setActiveRevision(manifest.active_revision_id || '');
       renderHistory(manifest);
       return manifest;
-    } catch (error) { if ($('projectIdentity')) $('projectIdentity').textContent = error.message; return null; }
+    } catch (error) { notify(error.message); return null; }
   }
 
   async function loadRevision(id) {

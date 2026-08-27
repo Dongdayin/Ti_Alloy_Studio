@@ -1,5 +1,12 @@
 # Lessons learned
 
+## Acceptance evidence overwhelmed the normal modeling interface
+
+- Trigger: revision hashes, parent IDs, timestamps, scientific state codes, executable paths, package versions, and engine cross-check messages were all shown in the primary inspector.
+- Root cause: release-verification evidence and ordinary user actions shared the same visual hierarchy.
+- Fix: show human-readable version numbers and modeling actions by default; summarize the included package as ready; keep component names and statuses in a collapsed troubleshooting section without paths or version strings.
+- Regression gate: the web asset test rejects the former technical revision metadata and verbose engine templates from the primary interface.
+
 ## Inspector cards overlapped in short windows
 
 - Trigger: the desktop inspector contained several content-sized cards in a height-constrained vertical flex container.

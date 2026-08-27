@@ -11,7 +11,6 @@
   <div>
     <strong>Ti Alloy Studio</strong>
     <span class="sub">Titanium Alloy Modeling · Validation · Visualization</span>
-    <span id="versionBadge" class="versionText">loading version…</span>
   </div>
   <div class="topActions">
     <button id="manualBtn" type="button">Manual</button>
@@ -242,20 +241,22 @@
     </section>
 
     <section class="panel" data-mobile-section="export">
-      <div class="panelHead"><h2>Bundled modeling capabilities</h2><button id="refreshCapabilities" type="button">Refresh</button></div>
-      <p id="capabilitySummary" class="micro">Checking the private offline modeling package…</p>
-      <div id="capabilityPanel" class="enginePanel"></div>
-      <details class="connectorDetails">
-        <summary>Optional connectors</summary>
-        <p class="micro">Not required for modeling, project files, or structure export. Probe only when you intentionally use a legacy external workflow.</p>
-        <button id="probeConnectors" type="button">Probe this computer</button>
-        <div id="connectorPanel" class="enginePanel"></div>
+      <div class="panelHead"><h2>Offline modeling package</h2><span id="capabilityStatus" class="badge">Checking</span></div>
+      <p id="capabilitySummary" class="statusSummary">Checking the included modeling components…</p>
+      <details class="diagnostics">
+        <summary>Troubleshooting details</summary>
+        <p class="micro">Open this only when the software reports a component problem.</p>
+        <p id="diagnosticVersion" class="micro"></p>
+        <div id="capabilityPanel" class="enginePanel"></div>
+        <div id="enginePanel" class="enginePanel"></div>
+        <div class="diagnosticActions"><button id="refreshCapabilities" type="button">Check included components</button></div>
+        <details class="connectorDetails">
+          <summary>Check optional external tools</summary>
+          <p class="micro">External tools are not required for modeling or export.</p>
+          <button id="probeConnectors" type="button">Check this computer</button>
+          <div id="connectorPanel" class="enginePanel"></div>
+        </details>
       </details>
-    </section>
-
-    <section class="panel" data-mobile-section="validation">
-      <div class="panelHead"><h2>Independent engines</h2><span>actual calls</span></div>
-      <div id="enginePanel" class="enginePanel"></div>
     </section>
 
     <section class="panel" data-mobile-section="export">

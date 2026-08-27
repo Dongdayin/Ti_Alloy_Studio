@@ -1,6 +1,6 @@
 # Ti Alloy Studio — standalone offline modeler
 
-Ti Alloy Studio 0.2.0 Phase 1 R9 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, and export workbench.
+Ti Alloy Studio 0.2.0 Phase 1 R10 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, and export workbench.
 
 This release is deliberately modeling-only. It creates input structures and structure series; it does not run VASP, LAMMPS, GPUMD, NEP training, or other production calculations. A normal user installs one offline package and does not configure Python, Conda, WSL, Atomsk, ATAT, or `PATH`.
 

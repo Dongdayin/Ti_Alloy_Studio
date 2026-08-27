@@ -327,7 +327,7 @@
 
   function engines() {
     $('enginePanel').innerHTML = (model.engines || []).map((r) =>
-      `<div class="engineCard ${esc(r.status)}"><header><strong>${esc(r.name)}</strong><span>${esc(r.status)}</span></header><p>${esc(r.message)}${r.version ? '<br>' + esc(r.version) : ''}</p></div>`
+      `<div class="diagnosticRow ${esc(r.status)}"><strong>${esc(r.name)}</strong><span>${esc(r.status)}</span></div>`
     ).join('');
   }
 
@@ -691,21 +691,25 @@
   async function refreshCapabilities() {
     const summary = $('capabilitySummary');
     const panel = $('capabilityPanel');
+    const status = $('capabilityStatus');
     if (!summary || !panel) return;
-    summary.textContent = 'Checking the private offline modeling package…';
+    summary.textContent = 'Checking the included modeling components…';
+    if (status) status.textContent = 'Checking';
     try {
       const response = await fetch('/api/capabilities', { cache: 'no-store' });
       if (!response.ok) throw Error('Capability check failed');
       const report = await response.json();
 	  const visible = (report.capabilities || []).filter((item) => item.category !== 'external_connector');
 	  const ready = visible.filter((item) => item.status === 'AVAILABLE' || item.status === 'SUPPORTED').length;
-	  summary.textContent = `${report.host_os}/${report.host_arch} · ${ready}/${visible.length} bundled modeling capabilities ready`;
+	  const allReady = ready === visible.length;
+	  summary.textContent = allReady ? 'Offline modeling package ready' : 'Some modeling components need attention';
+	  if (status) { status.textContent = allReady ? 'Ready' : 'Check'; status.className = `badge ${allReady ? 'PASS' : 'WARN'}`; }
       panel.innerHTML = visible.map((item) => {
-		const details = [item.message, item.path].filter(Boolean).map(esc).join('<br>');
-		return `<div class="engineCard ${esc(item.status)}"><header><strong>${esc(item.name)}</strong><span>${esc(item.status)}</span></header><p>${details || '—'}</p></div>`;
+		return `<div class="diagnosticRow ${esc(item.status)}"><strong>${esc(item.name)}</strong><span>${esc(item.status)}</span></div>`;
       }).join('');
     } catch (error) {
-      summary.textContent = error.message;
+	  summary.textContent = 'Component check failed. Open troubleshooting details.';
+	  if (status) { status.textContent = 'Check'; status.className = 'badge WARN'; }
       panel.innerHTML = '';
     }
   }
@@ -720,8 +724,7 @@
 		if (!response.ok) throw Error('Optional connector probe failed');
 		const payload = await response.json();
 		panel.innerHTML = (payload.report?.tools || []).map((tool) => {
-		  const details = [tool.path, tool.version, tool.message].filter(Boolean).map(esc).join('<br>');
-		  return `<div class="engineCard ${esc(tool.status)}"><header><strong>${esc(tool.name)}</strong><span>${esc(tool.status)}</span></header><p>${details || '—'}</p></div>`;
+		  return `<div class="diagnosticRow ${esc(tool.status)}"><strong>${esc(tool.name)}</strong><span>${esc(tool.status)}</span></div>`;
 		}).join('');
 	  } catch (error) {
 		panel.textContent = error.message;
@@ -804,7 +807,7 @@
   setInterval(() => fetch('/api/heartbeat', { method: 'POST' }).catch(() => {}), 5000);
   fetch('/api/info')
     .then((r) => r.json())
-    .then((j) => { $('versionBadge').textContent = `${j.version} · ${j.engine}`; })
+    .then((j) => { $('diagnosticVersion').textContent = `${j.version} · ${j.engine}`; })
     .catch(() => {});
 
 	function switchMobilePanel(panel) {
