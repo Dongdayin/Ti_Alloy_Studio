@@ -3,6 +3,8 @@ package app
 import (
 	"strings"
 	"testing"
+
+	"tialloystudio/internal/model"
 )
 
 func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
@@ -16,7 +18,7 @@ func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := st.ProjectManifest("phase1-provenance-test")
-	if m.SchemaVersion != 1 || m.ProjectID == "" || m.Name != "phase1-provenance-test" {
+	if m.SchemaVersion != 2 || m.ProjectID == "" || m.Name != "phase1-provenance-test" {
 		t.Fatalf("invalid manifest identity: %+v", m)
 	}
 	if len(m.History) != 2 {
@@ -43,13 +45,19 @@ func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
 	}
 }
 
-func TestProjectImportRestoresLastRequestAndContinuesLineage(t *testing.T) {
+func TestLegacyProjectImportRebuildsOnceAndPreservesLineage(t *testing.T) {
 	original := NewState()
 	_, err := original.BuildTracked(BuildRequest{Module: "gsfe", Phase: "alpha", NX: 2, NY: 2, NZ: 4, GSFEPreset: "basal_a", GSFESteps: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := original.ProjectManifest("restore-test")
+	m.SchemaVersion = 1
+	m.ActiveRevisionID = ""
+	for i := range m.History {
+		m.History[i].Structure = model.Structure{}
+		m.History[i].ScientificState = ""
+	}
 
 	restored := NewState()
 	res, err := restored.ImportProject(m)
@@ -63,11 +71,14 @@ func TestProjectImportRestoresLastRequestAndContinuesLineage(t *testing.T) {
 	if m2.ProjectID != m.ProjectID || m2.Name != "restore-test" {
 		t.Fatalf("project identity not restored: %+v", m2)
 	}
-	if len(m2.History) != len(m.History)+1 {
-		t.Fatalf("restored history = %d, want %d", len(m2.History), len(m.History)+1)
+	if m2.SchemaVersion != 2 || len(m2.History) != len(m.History) {
+		t.Fatalf("restored schema/history = %d/%d, want 2/%d", m2.SchemaVersion, len(m2.History), len(m.History))
 	}
 	last := m2.History[len(m2.History)-1]
-	if last.ParentID != m.History[len(m.History)-1].ID {
-		t.Fatalf("continued lineage parent = %q", last.ParentID)
+	if last.ID != m.History[len(m.History)-1].ID || last.StructureSHA256 != m.History[len(m.History)-1].StructureSHA256 {
+		t.Fatalf("legacy revision identity/hash changed: %+v", last)
+	}
+	if m2.ActiveRevisionID != last.ID || structureSHA256(res.Structure) != last.StructureSHA256 {
+		t.Fatal("legacy import did not activate the rebuilt final revision")
 	}
 }

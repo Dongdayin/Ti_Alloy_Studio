@@ -95,7 +95,7 @@ func stateProject(s *State) *projectState {
 	}
 	now := timestampUTC()
 	p := &projectState{manifest: ProjectManifest{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		ProjectID:     newRecordID(),
 		Name:          "Untitled Project",
 		CreatedAt:     now,
@@ -515,7 +515,7 @@ func (s *State) ProjectManifest(name string) ProjectManifest {
 
 func (s *State) ImportProject(m ProjectManifest) (BuildResponse, error) {
 	if m.SchemaVersion != 1 {
-		return BuildResponse{}, fmt.Errorf("unsupported project schema version %d", m.SchemaVersion)
+		return BuildResponse{}, fmt.Errorf("unsupported legacy project schema version %d; use ImportProjectArchive for schema 2", m.SchemaVersion)
 	}
 	if strings.TrimSpace(m.ProjectID) == "" {
 		return BuildResponse{}, errors.New("project_uuid is required")
@@ -523,14 +523,54 @@ func (s *State) ImportProject(m ProjectManifest) (BuildResponse, error) {
 	if len(m.History) == 0 {
 		return BuildResponse{}, errors.New("project history is empty; no model request can be restored")
 	}
-	if strings.TrimSpace(m.Name) == "" {
-		m.Name = "Imported Project"
+	seen := map[string]bool{}
+	temp := NewState()
+	defer projectRegistry.Delete(temp)
+	rebuilt := make([]BuildRecord, 0, len(m.History))
+	for i, legacy := range m.History {
+		if strings.TrimSpace(legacy.ID) == "" || seen[legacy.ID] {
+			return BuildResponse{}, fmt.Errorf("legacy revision %d has duplicate or empty id %q", i, legacy.ID)
+		}
+		if legacy.ParentID != "" && !seen[legacy.ParentID] {
+			return BuildResponse{}, fmt.Errorf("legacy revision %q has unknown or forward parent %q", legacy.ID, legacy.ParentID)
+		}
+		out, err := temp.BuildUser(legacy.Request)
+		if err != nil {
+			return BuildResponse{}, fmt.Errorf("rebuild legacy revision %q: %w", legacy.ID, err)
+		}
+		gotHash := structureSHA256(out.Structure)
+		if legacy.StructureSHA256 == "" || gotHash != legacy.StructureSHA256 {
+			return BuildResponse{}, fmt.Errorf("legacy revision %q structure SHA-256 mismatch: recorded %q rebuilt %q", legacy.ID, legacy.StructureSHA256, gotHash)
+		}
+		tm := temp.ProjectManifest("")
+		record := tm.History[len(tm.History)-1]
+		record.ID = legacy.ID
+		record.ParentID = legacy.ParentID
+		if strings.TrimSpace(legacy.CreatedAt) != "" {
+			record.CreatedAt = legacy.CreatedAt
+		}
+		rebuilt = append(rebuilt, record)
+		seen[record.ID] = true
 	}
-	if strings.TrimSpace(m.CreatedAt) == "" {
-		m.CreatedAt = timestampUTC()
+	name := strings.TrimSpace(m.Name)
+	if name == "" {
+		name = "Imported Project"
 	}
-	m.UpdatedAt = timestampUTC()
-	projectRegistry.Store(s, &projectState{manifest: cloneManifest(m)})
-	latest := m.History[len(m.History)-1].Request
-	return s.BuildTracked(latest)
+	created := m.CreatedAt
+	if strings.TrimSpace(created) == "" {
+		created = timestampUTC()
+	}
+	active := rebuilt[len(rebuilt)-1]
+	converted := ProjectManifest{
+		SchemaVersion: 2, ProjectID: m.ProjectID, Name: name,
+		CreatedAt: created, UpdatedAt: timestampUTC(),
+		ActiveRevisionID: active.ID, History: rebuilt,
+	}
+	out := responseFromRecord(active)
+	projectRegistry.Store(s, &projectState{manifest: cloneManifest(converted)})
+	s.mu.Lock()
+	s.Current = cloneBuildResponse(out)
+	s.CurrentRequest = active.Request
+	s.mu.Unlock()
+	return cloneBuildResponse(out), nil
 }
