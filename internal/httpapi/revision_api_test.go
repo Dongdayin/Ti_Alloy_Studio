@@ -72,6 +72,30 @@ func TestProjectArchiveAPIUsesSinglePortablePackage(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesAPIUsesBundledCatalogWithoutAutomaticConnectorProbe(t *testing.T) {
+	h := NewHandler(app.NewState())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/capabilities", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("capabilities status=%d body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, want := range []string{`"id":"native_modeling"`, `"category":"export_format"`, `"status":"NOT_CONFIGURED"`} {
+		if !bytes.Contains([]byte(body), []byte(want)) {
+			t.Fatalf("capabilities response missing %s: %s", want, body)
+		}
+	}
+	if bytes.Contains([]byte(body), []byte(`"wsl_distros"`)) || bytes.Contains([]byte(body), []byte(`"selected_distro"`)) {
+		t.Fatalf("default capabilities leaked a WSL probe report: %s", body)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/connectors", nil))
+	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"probe_performed":false`)) {
+		t.Fatalf("unrequested connector response=%d %s", w.Code, w.Body.String())
+	}
+}
+
 func postJSON(t *testing.T, h http.Handler, path, body string, wantStatus int) []byte {
 	t.Helper()
 	w := httptest.NewRecorder()

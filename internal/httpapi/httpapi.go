@@ -30,6 +30,8 @@ func NewHandler(state *app.State) http.Handler {
 	mux.HandleFunc("/api/export", a.export)
 	mux.HandleFunc("/api/export-batch", a.exportBatch)
 	mux.HandleFunc("/api/environment", a.environment)
+	mux.HandleFunc("/api/capabilities", a.capabilities)
+	mux.HandleFunc("/api/connectors", a.connectors)
 	mux.HandleFunc("/api/project", a.project)
 	mux.HandleFunc("/api/project/export", a.projectExport)
 	mux.HandleFunc("/api/project/import", a.projectImport)
@@ -111,6 +113,35 @@ func (a *api) environment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, engines.DetectEnvironment(r.URL.Query().Get("distro")))
+}
+
+func (a *api) capabilities(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, engines.DetectCapabilities())
+}
+
+func (a *api) connectors(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if strings.EqualFold(r.URL.Query().Get("probe"), "true") {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"probe_performed": true,
+			"report":          engines.DetectEnvironment(r.URL.Query().Get("distro")),
+		})
+		return
+	}
+	connectors := []engines.Capability{}
+	for _, capability := range engines.DetectCapabilities().Capabilities {
+		if capability.Category == "external_connector" {
+			connectors = append(connectors, capability)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"probe_performed": false, "connectors": connectors})
 }
 
 func (a *api) project(w http.ResponseWriter, r *http.Request) {

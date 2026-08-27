@@ -49,3 +49,26 @@ func TestChooseWSLDistroHonorsRequestedName(t *testing.T) {
 		t.Fatalf("unknown requested distro should not silently fall back: %q", got)
 	}
 }
+
+func TestCapabilityCatalogSeparatesBundledModelingFromOptionalConnectors(t *testing.T) {
+	report := DetectCapabilities()
+	byID := map[string]Capability{}
+	for _, capability := range report.Capabilities {
+		byID[capability.ID] = capability
+	}
+	for _, id := range []string{"native_modeling", "revision_projects", "native_sqs"} {
+		if got := byID[id]; got.Category != "built_in" || got.Status != "AVAILABLE" || !got.Required {
+			t.Fatalf("built-in capability %s = %+v", id, got)
+		}
+	}
+	for _, id := range []string{"poscar", "xyz", "extxyz", "lammps_data", "cif"} {
+		if got := byID[id]; got.Category != "export_format" || got.Status != "SUPPORTED" {
+			t.Fatalf("export capability %s = %+v", id, got)
+		}
+	}
+	for _, id := range []string{"atat", "lammps_runner", "gpumd", "vasp"} {
+		if got := byID[id]; got.Category != "external_connector" || got.Status != "NOT_CONFIGURED" || got.Required {
+			t.Fatalf("optional connector %s = %+v", id, got)
+		}
+	}
+}
