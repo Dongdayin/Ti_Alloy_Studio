@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>Ti Alloy Studio</title>
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -199,6 +200,7 @@
             <option value="fast">快速</option>
             <option value="quality">高质量</option>
             <option value="publication">论文图</option>
+            <option value="tachyon">Tachyon 风格</option>
           </select>
         </label>
         <label class="radiusControl">原子大小<input id="atomRadius" type="range" min="2" max="10" value="5" step="0.5"></label>
@@ -219,6 +221,7 @@
         <div id="atomTooltip" class="tooltip"></div>
       </div>
       <p class="hint">拖动：旋转 · Shift+拖动：平移 · 滚轮：缩放 · 点击原子：固定详情。</p>
+      <p class="hint tachyonNotice">Tachyon 风格是内置光线追踪风格预览：使用球面高光、阴影和环境遮蔽近似，不依赖外部程序。</p>
       <div id="atomSelection" class="selectionBar">未选择原子</div>
     </div>
 

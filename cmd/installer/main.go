@@ -18,6 +18,7 @@ import (
 )
 
 const product = "Ti Alloy Studio"
+const releaseVersion = "0.3.0-phase2-r1"
 const uninstallKey = `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio`
 
 func psq(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
@@ -94,7 +95,7 @@ func registerUninstall(dir string) error {
 	un := `"` + filepath.Join(dir, "Uninstall.exe") + `" --uninstall`
 	values := [][2]string{
 		{"DisplayName", product},
-		{"DisplayVersion", "0.2.0-phase1-r13"},
+		{"DisplayVersion", releaseVersion},
 		{"Publisher", "Ti Alloy Studio"},
 		{"InstallLocation", dir},
 		{"UninstallString", un},

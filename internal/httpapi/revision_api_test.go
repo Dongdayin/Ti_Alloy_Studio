@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"tialloystudio/internal/app"
@@ -93,6 +94,21 @@ func TestCapabilitiesAPIUsesBundledCatalogWithoutAutomaticConnectorProbe(t *test
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/connectors", nil))
 	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"probe_performed":false`)) {
 		t.Fatalf("unrequested connector response=%d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestInfoReportsPhase2ModelingOnlyRelease(t *testing.T) {
+	h := NewHandler(app.NewState())
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/info", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("info status=%d body=%s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, want := range []string{`"version":"0.3.0-phase2-r1"`, "standalone offline structure modeling", "no WSL or local solver required"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("phase 2 info response missing %q: %s", want, body)
+		}
 	}
 }
 

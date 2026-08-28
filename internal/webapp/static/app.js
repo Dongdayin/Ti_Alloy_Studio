@@ -294,6 +294,69 @@
     ctx.restore();
   }
 
+  function drawTachyonBackdrop(ctx, w, h) {
+    const background = ctx.createLinearGradient(0, 0, 0, h);
+    background.addColorStop(0, '#f9fbff');
+    background.addColorStop(0.58, '#eef3f8');
+    background.addColorStop(1, '#e1e8f0');
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, w, h);
+
+    const vignette = ctx.createRadialGradient(w * 0.5, h * 0.42, Math.min(w, h) * 0.1, w * 0.5, h * 0.5, Math.max(w, h) * 0.62);
+    vignette.addColorStop(0, 'rgba(255,255,255,0)');
+    vignette.addColorStop(1, 'rgba(36,52,72,0.10)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function drawTachyonAtom(ctx, p, radius, color, isSelected, zMin, zMax) {
+    const depthSpan = Math.max(1e-9, zMax - zMin);
+    const depth = (p.z - zMin) / depthSpan;
+    const r = (isSelected ? radius + 2.4 : radius) * (0.96 + depth * 0.11);
+
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    const ao = ctx.createRadialGradient(p.x + r * 0.18, p.y + r * 0.34, r * 0.12, p.x + r * 0.18, p.y + r * 0.34, r * 1.25);
+    ao.addColorStop(0, 'rgba(15,23,42,0.22)');
+    ao.addColorStop(0.55, 'rgba(15,23,42,0.10)');
+    ao.addColorStop(1, 'rgba(15,23,42,0)');
+    ctx.fillStyle = ao;
+    ctx.beginPath();
+    ctx.ellipse(p.x + r * 0.16, p.y + r * 0.42, r * 1.06, r * 0.62, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(15,23,42,0.28)';
+    ctx.shadowBlur = 8 + depth * 7;
+    ctx.shadowOffsetX = 1.4;
+    ctx.shadowOffsetY = 2.4;
+    const lit = mixColor(color, '#ffffff', 0.66);
+    const rim = mixColor(color, '#dbeafe', 0.18);
+    const shade = mixColor(color, '#0f172a', 0.38);
+    const gradient = ctx.createRadialGradient(p.x - r * 0.42, p.y - r * 0.44, Math.max(1, r * 0.05), p.x, p.y, r * 1.03);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.13, lit);
+    gradient.addColorStop(0.55, rim);
+    gradient.addColorStop(1, shade);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = isSelected ? 2 : 1;
+    ctx.strokeStyle = isSelected ? '#111827' : 'rgba(255,255,255,0.88)';
+    ctx.stroke();
+
+    ctx.globalAlpha = isSelected ? 0.5 : 0.28;
+    ctx.strokeStyle = 'rgba(15,23,42,0.34)';
+    ctx.lineWidth = Math.max(0.7, r * 0.08);
+    ctx.beginPath();
+    ctx.arc(p.x + r * 0.04, p.y + r * 0.04, r * 0.88, Math.PI * 0.1, Math.PI * 1.45);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function bindColorControl(inputId, key) {
     const input = $(inputId);
     if (!input) return;
@@ -359,11 +422,15 @@
     const h = cv.clientHeight;
     const dpr = window.devicePixelRatio || 1;
     const quality = currentRenderQuality();
-    const qualityScale = quality === 'publication' ? 2 : 1;
+    const qualityScale = quality === 'tachyon' ? 2.5 : quality === 'publication' ? 2 : 1;
     cv.width = Math.max(1, Math.round(w * dpr * qualityScale));
     cv.height = Math.max(1, Math.round(h * dpr * qualityScale));
     ctx.setTransform(dpr * qualityScale, 0, 0, dpr * qualityScale, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    if (quality === 'tachyon') {
+      drawTachyonBackdrop(ctx, w, h);
+    } else {
+      ctx.clearRect(0, 0, w, h);
+    }
 
     const positions = model.structure.positions;
     if (!positions.length) return;
@@ -402,6 +469,8 @@
         ctx.strokeStyle = p.i === selected ? '#111' : '#fff';
         ctx.lineWidth = p.i === selected ? 1.5 : 1;
         ctx.stroke();
+      } else if (quality === 'tachyon') {
+        drawTachyonAtom(ctx, p, p.radius, color, p.i === selected, zMin, zMax);
       } else {
         drawQualityAtom(ctx, p, p.radius, color, p.i === selected, quality);
       }
@@ -499,7 +568,7 @@
     draw3d();
     const a = document.createElement('a');
     a.href = canvas.toDataURL('image/png');
-    a.download = 'TiAlloyStudio-structure.png';
+    a.download = currentRenderQuality() === 'tachyon' ? 'TiAlloyStudio-tachyon-style.png' : 'TiAlloyStudio-structure.png';
     document.body.appendChild(a);
     a.click();
     a.remove();

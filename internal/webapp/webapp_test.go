@@ -28,6 +28,9 @@ func TestWorkbenchServesInteractiveUI(t *testing.T) {
 			t.Fatalf("missing %q", needle)
 		}
 	}
+	if !strings.Contains(s, `rel="icon" href="data:,"`) {
+		t.Fatal("page should suppress browser favicon 404 noise")
+	}
 	for _, obsolete := range []string{`data-module="eos"`, `data-module="gsfe"`, "EOS batch ZIP", "GSFE batch ZIP", "Calculated total energies"} {
 		if strings.Contains(s, obsolete) {
 			t.Fatalf("standalone project-calculation UI is still exposed: %q", obsolete)
@@ -219,6 +222,37 @@ func TestStructureViewerHasRenderModesAndAtomColorControls(t *testing.T) {
 		if !strings.Contains(appJS, needle) {
 			t.Errorf("3D viewer behavior missing %q", needle)
 		}
+	}
+}
+
+func TestStructureViewerOffersBundledTachyonStyleRendering(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{
+		`value="tachyon"`,
+		"Tachyon 风格",
+		"内置光线追踪风格",
+	} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("Tachyon-style render control missing %q", needle)
+		}
+	}
+	if strings.Contains(page, "tachyon.exe") {
+		t.Fatal("Tachyon renderer must not require an external executable in the primary UI")
+	}
+
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"function drawTachyonBackdrop",
+		"function drawTachyonAtom",
+		"quality === 'tachyon'",
+		"TiAlloyStudio-tachyon-style.png",
+	} {
+		if !strings.Contains(appJS, needle) {
+			t.Errorf("Tachyon-style render behavior missing %q", needle)
+		}
+	}
+	if strings.Contains(appJS, "tachyon.exe") || strings.Contains(appJS, "Start-Process") {
+		t.Fatal("browser renderer must remain bundled and must not invoke an external Tachyon process")
 	}
 }
 

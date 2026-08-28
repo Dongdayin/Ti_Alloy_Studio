@@ -1,4 +1,4 @@
-name: Phase 1 Go Scientific Core
+name: Phase 2 Go Scientific Core
 
 on:
   workflow_dispatch:

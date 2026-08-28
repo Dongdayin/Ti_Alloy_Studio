@@ -16,3 +16,9 @@ func TestTwoStageHelperDoesNotUseLegacyBatchLauncher(t *testing.T) {
 		t.Fatalf("two-stage helper must not use legacy batch/start launcher: %v", args)
 	}
 }
+
+func TestInstallerDisplayVersionStartsPhase2(t *testing.T) {
+	if releaseVersion != "0.3.0-phase2-r1" {
+		t.Fatalf("installer release version=%q", releaseVersion)
+	}
+}

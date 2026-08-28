@@ -1,6 +1,6 @@
 # Ti Alloy Studio — titanium alloy modeler
 
-Ti Alloy Studio 0.2.0 Phase 1 R13 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, and export workbench.
+Ti Alloy Studio 0.3.0 Phase 2 R1 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, and export workbench.
 
 This release is deliberately modeling-only. It creates titanium-alloy structure files for later use in VASP, LAMMPS, GPUMD, NEP training, and other workflows, but it does not run those calculations. A normal user installs one offline package and does not configure Python, Conda, WSL, Atomsk, ATAT, or `PATH`.
 
@@ -33,6 +33,8 @@ Bundled components are:
 - Atomsk 0.13.1 for independent structure checks.
 
 The capability panel reports bundled modeling functions and export formats. External solvers and WSL tools are not required for modeling or export.
+
+Phase 2 starts with a bundled Tachyon-style structure renderer. It uses the local browser canvas to approximate ray-traced molecular figure lighting with spherical highlights, projected shadows, and ambient-occlusion-style depth cues, so PNG export remains available from the same offline application package. It does not require a local Tachyon executable.
 
 ## Scientific scope
 
