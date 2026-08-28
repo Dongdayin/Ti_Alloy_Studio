@@ -11,16 +11,14 @@
   };
   const phaseMetadata = {
     alpha: {
-      hint: 'α-Ti uses HCP lattice parameters aα and cα.',
-      lattice: 'Lattice · α-Ti HCP',
-      surface: 'basal_0001',
-      gsfe: 'basal_a'
+      hint: 'α-Ti 使用 HCP 晶格参数 aα 和 cα。',
+      lattice: '晶格常数 · α-Ti HCP',
+      surface: 'basal_0001'
     },
     beta: {
-      hint: 'β-Ti uses one BCC lattice parameter aβ.',
-      lattice: 'Lattice · β-Ti BCC',
-      surface: '100',
-      gsfe: '110_111'
+      hint: 'β-Ti 使用 BCC 晶格参数 aβ。',
+      lattice: '晶格常数 · β-Ti BCC',
+      surface: '100'
     }
   };
   const excludedAnalysisMetrics = new Set([
@@ -40,7 +38,7 @@
   let orthographic = true;
   let drag = null;
   let chartData = { composition: [], analysis: [] };
-  let userEnergies = null;
+  let lastExportPath = '';
 	let activeRevisionID = '';
 	let pendingEditParentID = '';
 
@@ -74,7 +72,7 @@
   }
 
   function numberList(id) {
-    return $(id).value.split(/[;,\s]+/).map(Number).filter(Number.isFinite);
+    return ($(id)?.value || '').split(/[;,\s]+/).map(Number).filter(Number.isFinite);
   }
 
   function requestPayload() {
@@ -82,8 +80,10 @@
     if (active === 'random') module = $('alloyType').value;
     if (active === 'vacancy') module = $('defectType').value;
     const interfaceMode = module === 'interface';
+    const alloyMode = $('alloyType')?.value || 'crystal';
     return {
       module,
+      alloy_mode: alloyMode,
       phase: interfaceMode ? 'alpha' : currentPhase(),
       nx: num('nx'),
       ny: num('ny'),
@@ -96,25 +96,20 @@
       a_beta: num('aBeta'),
       composition_wt: compositionInput(),
       seed: num('seed'),
-      sqs_backend: $('sqsBackend').value,
+      sqs_backend: $('sqsBackend')?.value || 'native',
       sqs_steps: num('sqsSteps'),
       sqs_shells: num('sqsShells'),
-      atat_distro: $('atatDistro').value.trim(),
+      atat_distro: $('atatDistro')?.value.trim() || '',
       atat_pair_cutoff_angstrom: num('atatPairCutoff'),
       atat_triplet_cutoff_angstrom: num('atatTripletCutoff'),
       atat_run_seconds: num('atatRunSeconds'),
       site_id: num('siteId'),
-      new_species: $('newSpecies').value,
+      new_species: $('newSpecies')?.value || 'Al',
       surface_preset: interfaceMode ? ($('interfaceTopology')?.value || 'interface_periodic_bicrystal') : $('surfacePreset').value,
       vacuum: module === 'interface' ? num('interfaceVacuum') : num('vacuum'),
       interface_max_repeat: num('interfaceMatchLimit'),
       interface_candidate: num('interfaceCandidate'),
-      interface_distance: num('interfaceDistance'),
-      eos_ratios: numberList('eosRatios'),
-      eos_index: num('eosIndex'),
-      gsfe_preset: $('gsfePreset').value,
-      gsfe_steps: num('gsfeSteps'),
-      gsfe_index: num('gsfeIndex')
+      interface_distance: num('interfaceDistance')
     };
   }
 
@@ -164,33 +159,41 @@
         ? 'α/β interface models use both α and β lattice values.'
         : meta.hint;
     }
-    if ($('latticeSummary')) $('latticeSummary').textContent = showBothLattices ? 'Lattice · α and β' : meta.lattice;
+    if ($('latticeSummary')) $('latticeSummary').textContent = showBothLattices ? '晶格常数 · α 与 β' : meta.lattice;
     if (active !== 'interface') {
       syncPhaseOptions('surfacePreset', phase, meta.surface);
-      syncPhaseOptions('gsfePreset', phase, meta.gsfe);
     }
     updateInterfaceTopologyControls();
+  }
+
+  function updateAlloyControls() {
+    const alloyMode = $('alloyType')?.value || 'crystal';
+    const needsComposition = alloyMode !== 'crystal';
+    if ($('compositionLabel')) $('compositionLabel').hidden = !needsComposition;
+    if ($('seedLabel')) $('seedLabel').hidden = !needsComposition;
+    if ($('sqsControls')) $('sqsControls').style.display = alloyMode === 'sqs' ? 'block' : 'none';
   }
 
   function setModule(module) {
     active = module;
     document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.module === module));
-    ['sqsControls', 'defectControls', 'interfaceControls', 'eosControls', 'gsfeControls']
-      .forEach((id) => { $(id).style.display = 'none'; });
-    $('compositionControls').style.display = (module === 'random' || module === 'sqs') ? 'block' : 'none';
-    if (module === 'sqs') $('sqsControls').style.display = 'block';
+    ['defectControls', 'surfaceControls', 'interfaceControls']
+      .forEach((id) => { if ($(id)) $(id).style.display = 'none'; });
     if (module === 'vacancy') $('defectControls').style.display = 'block';
+    if (module === 'surface') $('surfaceControls').style.display = 'block';
     if (module === 'interface') $('interfaceControls').style.display = 'block';
-    if (module === 'eos') $('eosControls').style.display = 'block';
-    if (module === 'gsfe') $('gsfeControls').style.display = 'block';
+    if ($('operationHint')) {
+      $('operationHint').textContent = module === 'random'
+        ? '先生成基础模型；需要缺陷、表面或 α/β 界面时再进入对应页设置参数。不填写/不选择操作就跳过。'
+        : '当前操作会基于上方设定的 Ti 合金成分、晶体结构、晶格常数和超胞生成。';
+    }
+    updateAlloyControls();
     updatePhaseControls();
-    userEnergies = null;
-    if ($('energies')) $('energies').value = '';
   }
 
   async function build() {
     try {
-      $('statusBadge').textContent = 'Building…';
+      $('statusBadge').textContent = '生成中…';
 	  const target = pendingEditParentID ? '/api/project/edit' : '/api/build';
 	  const body = pendingEditParentID
 	    ? { parent_revision_id: pendingEditParentID, request: requestPayload() }
@@ -201,22 +204,21 @@
 		body: JSON.stringify(body)
       });
       const payload = await response.json();
-      if (!response.ok) throw Error(payload.error || 'Build failed');
+      if (!response.ok) throw Error(payload.error || '生成失败');
 	  if (pendingEditParentID) {
 		activeRevisionID = payload.active_revision_id || '';
 		const revisionResponse = await fetch(`/api/project/revision?id=${encodeURIComponent(activeRevisionID)}`, { cache: 'no-store' });
-		if (!revisionResponse.ok) throw Error('Edited revision could not be loaded');
+		if (!revisionResponse.ok) throw Error('无法读取修改后的结构');
 		showRevision(await revisionResponse.json());
 		pendingEditParentID = '';
 	  } else {
 		model = payload;
 	  }
       selected = -1;
-      userEnergies = null;
 	  if (!pendingEditParentID) render();
-      $('statusBadge').textContent = 'Model ready';
+      $('statusBadge').textContent = '模型已生成';
     } catch (error) {
-      $('statusBadge').textContent = 'Error';
+      $('statusBadge').textContent = '错误';
       toast(error.message);
     }
   }
@@ -234,6 +236,10 @@
 
   function currentRenderMode() {
     return $('renderMode')?.value || 'element';
+  }
+
+  function currentRenderQuality() {
+    return $('renderQuality')?.value || 'fast';
   }
 
   function mixColor(hex, target, ratio) {
@@ -259,6 +265,35 @@
     return base;
   }
 
+  function drawQualityAtom(ctx, p, radius, color, isSelected, quality) {
+    const r = isSelected ? radius + 2 : radius;
+    ctx.save();
+    if (quality === 'publication') {
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
+      ctx.shadowBlur = 7;
+      ctx.shadowOffsetX = 1.5;
+      ctx.shadowOffsetY = 2.5;
+    } else {
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.14)';
+      ctx.shadowBlur = 3;
+      ctx.shadowOffsetX = 0.8;
+      ctx.shadowOffsetY = 1.2;
+    }
+    const gradient = ctx.createRadialGradient(p.x - r * 0.35, p.y - r * 0.35, Math.max(1, r * 0.1), p.x, p.y, r);
+    gradient.addColorStop(0, mixColor(color, '#ffffff', 0.72));
+    gradient.addColorStop(0.55, color);
+    gradient.addColorStop(1, mixColor(color, '#111827', 0.28));
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = isSelected ? '#111827' : 'rgba(255,255,255,0.88)';
+    ctx.lineWidth = isSelected ? 1.7 : 0.9;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function bindColorControl(inputId, key) {
     const input = $(inputId);
     if (!input) return;
@@ -270,23 +305,35 @@
     });
   }
 
+  function moduleDisplayName(module) {
+    return ({
+      crystal: 'Ti 单晶',
+      random: '随机 Ti 合金',
+      sqs: 'SQS Ti 合金',
+      vacancy: '缺陷模型',
+      substitution: '替换原子模型',
+      surface: '表面模型',
+      interface: 'α/β 界面模型'
+    })[module] || 'Ti 合金模型';
+  }
+
   function modelInfo() {
     const s = model.structure;
     const meta = s.meta || {};
     const cell = s.cell;
     const rows = [
-      ['Module', model.module],
-      ['Phase', meta.phase || '—'],
-      ['Bravais', String(meta.bravais || '—').toUpperCase()],
-      ['Cell setting', meta.cell_setting || '—'],
-      ['Atoms', s.species.length],
+      ['模型', moduleDisplayName(model.module)],
+      ['相', meta.phase || '—'],
+      ['晶体', String(meta.bravais || '—').toUpperCase()],
+      ['晶胞', meta.cell_setting || '—'],
+      ['原子数', s.species.length],
       ['a / b / c', cell.map(norm).map((v) => v.toFixed(4)).join(' / ') + ' Å'],
       ['α / β / γ', [
         angle(cell[1], cell[2]),
         angle(cell[0], cell[2]),
         angle(cell[0], cell[1])
       ].map((v) => v.toFixed(3) + '°').join(' / ')],
-      ['Volume', Math.abs(determinant(cell)).toFixed(4) + ' Å³'],
+      ['体积', Math.abs(determinant(cell)).toFixed(4) + ' Å³'],
       ['PBC', s.pbc.map((v) => v ? 'T' : 'F').join(' ')]
     ];
     $('modelInfo').innerHTML = rows.map((r) => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('');
@@ -311,9 +358,11 @@
     const w = cv.clientWidth;
     const h = cv.clientHeight;
     const dpr = window.devicePixelRatio || 1;
-    cv.width = Math.max(1, Math.round(w * dpr));
-    cv.height = Math.max(1, Math.round(h * dpr));
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const quality = currentRenderQuality();
+    const qualityScale = quality === 'publication' ? 2 : 1;
+    cv.width = Math.max(1, Math.round(w * dpr * qualityScale));
+    cv.height = Math.max(1, Math.round(h * dpr * qualityScale));
+    ctx.setTransform(dpr * qualityScale, 0, 0, dpr * qualityScale, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
     const positions = model.structure.positions;
@@ -344,13 +393,18 @@
     const zMax = Math.max(...cv._pts.map((p) => p.z));
 
     for (const p of cv._pts) {
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.i === selected ? p.radius + 2 : p.radius, 0, Math.PI * 2);
-      ctx.fillStyle = currentAtomColor(p.i, p.z, zMin, zMax);
-      ctx.fill();
-      ctx.strokeStyle = p.i === selected ? '#111' : '#fff';
-      ctx.lineWidth = p.i === selected ? 1.5 : 1;
-      ctx.stroke();
+      const color = currentAtomColor(p.i, p.z, zMin, zMax);
+      if (quality === 'fast') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.i === selected ? p.radius + 2 : p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = p.i === selected ? '#111' : '#fff';
+        ctx.lineWidth = p.i === selected ? 1.5 : 1;
+        ctx.stroke();
+      } else {
+        drawQualityAtom(ctx, p, p.radius, color, p.i === selected, quality);
+      }
     }
 
     const phaseMode = currentRenderMode() === 'phase' && model.structure.site_labels?.length;
@@ -434,6 +488,22 @@
       }
       drag = null;
     });
+  }
+
+  function exportStructurePNG() {
+    if (!model) {
+      toast('请先生成模型');
+      return;
+    }
+    const canvas = $('structureCanvas');
+    draw3d();
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'TiAlloyStudio-structure.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('PNG 已导出');
   }
 
   function validation() {
@@ -624,9 +694,9 @@
   }
 
   function topologyLabel(value) {
-    if (value === 'single_interface_slab') return 'single-interface slab';
-    if (value === 'periodic_bicrystal') return 'periodic bicrystal';
-    return value || 'interface';
+    if (value === 'single_interface_slab') return '单界面薄层';
+    if (value === 'periodic_bicrystal') return '周期双晶胞';
+    return value || '界面';
   }
 
   function analysisHeadlineText() {
@@ -634,28 +704,28 @@
     const series = model.series || {};
     const atoms = model.structure?.species?.length || 0;
     if (model.module === 'random') {
-      return `Random alloy built · ${atoms} atoms · composition resolution ${formatValue(analysis.composition_resolution_at_percent, 3)} at.%`;
+      return `随机 Ti 合金 · ${atoms} atoms · 成分分辨率 ${formatValue(analysis.composition_resolution_at_percent, 3)} at.%`;
     }
     if (model.module === 'crystal') {
-      return `Pure crystal built · ${atoms} atoms · ready for inspection and export`;
+      return `Ti 单晶 · ${atoms} atoms · 可检查和导出`;
     }
     if (model.module === 'sqs') {
-      return `Built-in SQS · objective ${formatValue(analysis.objective, 6)} · pair error ${formatValue(analysis.max_abs_pair_error, 6)}`;
+      return `SQS Ti 合金 · 目标函数 ${formatValue(analysis.objective, 6)} · pair error ${formatValue(analysis.max_abs_pair_error, 6)}`;
+    }
+    if (model.module === 'vacancy') {
+      return `缺陷模型 · 空位原子编号 ${analysis.site_id ?? '—'} · ${atoms} atoms`;
+    }
+    if (model.module === 'substitution') {
+      return `缺陷模型 · 替换原子编号 ${analysis.site_id ?? '—'} → ${analysis.new_species || '—'} · ${atoms} atoms`;
     }
     if (model.module === 'surface') {
-      return `Surface slab · ${analysis.plane || 'selected plane'} · vacuum ${formatValue(analysis.vacuum_angstrom, 2)} Å`;
+      return `表面模型 · ${analysis.plane || '选定晶面'} · 真空层 ${formatValue(analysis.vacuum_angstrom, 2)} Å`;
     }
     if (model.module === 'interface') {
       const candidate = analysis.candidate || {};
-      return `Burgers α/β interface · ${topologyLabel(analysis.interface_topology)} · max imposed strain ${formatValue(candidate.max_imposed_strain_percent, 3)}%`;
+      return `Burgers α/β 界面 · ${topologyLabel(analysis.interface_topology)} · 最大几何失配 ${formatValue(candidate.max_imposed_strain_percent, 3)}%`;
     }
-    if (model.module === 'eos') {
-      return `EOS structure series · ${(series.volume_ratios || []).length} volume points · no energy fit until energies are supplied`;
-    }
-    if (model.module === 'gsfe') {
-      return `GSFE geometry series · ${(series.lambda || []).length} displacement points · geometry only until energies are supplied`;
-    }
-    return `${atoms} atoms · key geometry values are listed below`;
+    return `${atoms} atoms · 关键几何参数见下方`;
   }
 
   function setAnalysisChartVisible(show) {
@@ -665,66 +735,15 @@
       const cv = $('analysisCanvas');
       const ctx = cv?.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, cv.width, cv.height);
-      $('analysisTitle').textContent = 'Key values';
+      $('analysisTitle').textContent = '关键参数';
       $('analysisHeadline').classList.add('analysisMuted');
     } else {
       $('analysisHeadline').classList.remove('analysisMuted');
     }
   }
 
-  function updateEnergyBox() {
-    const box = $('energyBox');
-    if (!box) return;
-    box.hidden = !(model && (model.module === 'eos' || model.module === 'gsfe'));
-  }
-
   function analysisPlotData() {
     const series = model.series || {};
-    const analysis = model.analysis || {};
-    if (model.module === 'eos') {
-      const x = series.volume_ratios || [];
-      const rawY = userEnergies && userEnergies.length === x.length
-        ? userEnergies
-        : (series.volumes_angstrom3 || []);
-      return {
-        points: x.map((v, i) => ({ x: Number(v), y: Number(rawY[i]), index: i, label: `EOS #${i}` })),
-        xLabel: 'V/V₀',
-        yLabel: userEnergies && userEnergies.length === x.length ? 'Energy (eV)' : 'Volume (Å³)'
-      };
-    }
-    if (model.module === 'gsfe') {
-      const lambda = series.lambda || [];
-      if (userEnergies && userEnergies.length === lambda.length) {
-        const area = Number(analysis.area_angstrom2);
-        const faults = Number(analysis.fault_count);
-        if (area > 0 && faults > 0) {
-          const e0 = userEnergies[0];
-          const factor = 16021.76634;
-          return {
-            points: lambda.map((v, i) => ({
-              x: Number(v),
-              y: (Number(userEnergies[i]) - e0) / (area * faults) * factor,
-              index: i,
-              label: `GSFE #${i}`
-            })),
-            xLabel: 'λ',
-            yLabel: 'γ (mJ/m²)'
-          };
-        }
-      }
-      const path = Array.isArray(analysis.path_angstrom) ? analysis.path_angstrom : [1, 0, 0];
-      const pathLength = norm(path);
-      return {
-        points: lambda.map((v, i) => ({
-          x: Number(v),
-          y: Number(v) * pathLength,
-          index: i,
-          label: `GSFE #${i}`
-        })),
-        xLabel: 'λ',
-        yLabel: '|u| (Å)'
-      };
-    }
     if (model.module === 'interface') {
       const candidates = (series.candidates || []).slice(0, 32);
       return {
@@ -734,8 +753,8 @@
           index: i,
           label: `Candidate #${i}`
         })),
-        xLabel: 'Candidate index',
-        yLabel: 'Max imposed strain (%)'
+        xLabel: '候选编号',
+        yLabel: '最大几何失配 (%)'
       };
     }
     if (model.module === 'sqs' && Array.isArray(series.correlations)) {
@@ -746,21 +765,21 @@
           index: i,
           label: `${c.points}-point cluster #${i}`
         })),
-        xLabel: 'Cluster diameter (Å)',
-        yLabel: '|correlation difference|'
+        xLabel: '团簇直径 (Å)',
+        yLabel: '相关函数残差'
       };
     }
     if (model.module === 'sqs' && Array.isArray(series.convergence)) {
       return {
         points: series.convergence.map((v, i) => ({ x: i, y: Number(v), index: i, label: `Preview step ${i}` })),
-        xLabel: 'Recorded preview step',
-        yLabel: 'Preview objective'
+        xLabel: '优化步',
+        yLabel: '目标函数'
       };
     }
     return {
       points: [],
-      xLabel: 'Metric',
-      yLabel: 'Value'
+      xLabel: '参数',
+      yLabel: '值'
     };
   }
 
@@ -783,27 +802,8 @@
         .filter((x) => typeof x[1] !== 'object' && !excludedAnalysisMetrics.has(x[0]))
         .map(([k, v]) => [k, typeof v === 'number' ? v.toPrecision(8) : v])
     ];
-    if (model.module === 'eos') {
-      rows = [['Index', 'V/V₀', userEnergies ? 'Energy eV' : 'Volume Å³'],
-        ...(series.volume_ratios || []).map((v, i) => [
-          i,
-          Number(v).toFixed(5),
-          userEnergies && userEnergies.length === (series.volume_ratios || []).length
-            ? Number(userEnergies[i]).toFixed(8)
-            : Number(series.volumes_angstrom3[i]).toFixed(6)
-        ])];
-    }
-    if (model.module === 'gsfe') {
-      const plot = analysisPlotData();
-      rows = [['Index', 'λ', plot.yLabel],
-        ...(series.lambda || []).map((v, i) => [
-          i,
-          Number(v).toFixed(6),
-          plot.points[i] ? Number(plot.points[i].y).toFixed(8) : '—'
-        ])];
-    }
     if (model.module === 'interface') {
-      rows = [['#', 'α repeat', 'β repeat', 'raw X %', 'raw Y %', 'max strain %'],
+      rows = [['#', 'α 重复', 'β 重复', 'X 失配 %', 'Y 失配 %', '最大失配 %'],
         ...(series.candidates || []).slice(0, 16).map((c, i) => [
           i,
           `${c.alpha_repeat_x}×${c.alpha_repeat_y}`,
@@ -825,36 +825,12 @@
     }
   }
 
-  function applyEnergies() {
-    if (!model) return toast('Generate a model first');
-    if (model.module !== 'eos' && model.module !== 'gsfe') {
-      return toast('Energy input is used for EOS or GSFE series');
-    }
-    const values = $('energies').value.split(/[\s,;]+/).map(Number).filter(Number.isFinite);
-    const expected = model.module === 'eos'
-      ? (model.series?.volume_ratios || []).length
-      : (model.series?.lambda || []).length;
-    if (values.length !== expected) {
-      return toast(`Expected ${expected} energies, received ${values.length}`);
-    }
-    userEnergies = values;
-    charts();
-    if (model.module === 'gsfe') {
-      toast('GSFE γ normalized using stored area and fault_count');
-    } else {
-      toast('EOS energies plotted; no equation-of-state fit is performed here');
-    }
-  }
-
   function render() {
     modelInfo();
     validation();
     engines();
     draw3d();
     charts();
-    updateEnergyBox();
-    $('eosBatchBtn').disabled = model.module !== 'eos';
-    $('gsfeBatchBtn').disabled = model.module !== 'gsfe';
   }
 
 	function showRevision(record) {
@@ -871,8 +847,7 @@
 	  };
 	  activeRevisionID = record.id || activeRevisionID;
 	  selected = -1;
-	  userEnergies = null;
-	  if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `Revision ${activeRevisionID.slice(0, 8)}` : 'No active revision';
+	  if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `结构 ${activeRevisionID.slice(0, 8)}` : '无当前结构';
 	  render();
 	}
 
@@ -881,23 +856,23 @@
     const panel = $('capabilityPanel');
     const status = $('capabilityStatus');
     if (!summary || !panel) return;
-    summary.textContent = 'Checking the included modeling components…';
-    if (status) status.textContent = 'Checking';
+    summary.textContent = '正在检查软件内置建模组件…';
+    if (status) status.textContent = '检查中';
     try {
       const response = await fetch('/api/capabilities', { cache: 'no-store' });
-      if (!response.ok) throw Error('Capability check failed');
+      if (!response.ok) throw Error('组件检查失败');
       const report = await response.json();
 	  const visible = (report.capabilities || []).filter((item) => item.category !== 'external_connector');
 	  const ready = visible.filter((item) => item.status === 'AVAILABLE' || item.status === 'SUPPORTED').length;
 	  const allReady = ready === visible.length;
-	  summary.textContent = allReady ? 'Offline modeling package ready' : 'Some modeling components need attention';
-	  if (status) { status.textContent = allReady ? 'Ready' : 'Check'; status.className = `badge ${allReady ? 'PASS' : 'WARN'}`; }
+	  summary.textContent = allReady ? '内置建模组件可用' : '部分内置组件需要检查';
+	  if (status) { status.textContent = allReady ? '可用' : '检查'; status.className = `badge ${allReady ? 'PASS' : 'WARN'}`; }
       panel.innerHTML = visible.map((item) => {
 		return `<div class="diagnosticRow ${esc(item.status)}"><strong>${esc(item.name)}</strong><span>${esc(item.status)}</span></div>`;
       }).join('');
     } catch (error) {
-	  summary.textContent = 'Component check failed. Open troubleshooting details.';
-	  if (status) { status.textContent = 'Check'; status.className = 'badge WARN'; }
+	  summary.textContent = '组件检查失败，请打开故障诊断。';
+	  if (status) { status.textContent = '检查'; status.className = 'badge WARN'; }
       panel.innerHTML = '';
     }
   }
@@ -938,6 +913,113 @@
     }
   }
 
+  function suggestedExportName(format) {
+    const suffix = ({ poscar: 'POSCAR', xyz: 'model.xyz', extxyz: 'model.extxyz', lammps: 'model.data', cif: 'model.cif' })[format] || 'model.dat';
+    return suffix === 'POSCAR' ? 'POSCAR' : `TiAlloyStudio-${suffix}`;
+  }
+
+  function showExportResult(result) {
+    const box = $('exportResult');
+    if (!box) return;
+    if (!result || !result.saved) {
+      box.hidden = true;
+      return;
+    }
+    lastExportPath = result.path || '';
+    box.hidden = false;
+    box.innerHTML = `<strong>已导出：${esc(result.filename || '')}</strong><br><span>${esc(result.path || '')}</span><br><span>${Number(result.bytes || 0)} bytes · SHA-256 ${esc(result.sha256 || '')}</span>`;
+    if ($('openExportFolderBtn')) $('openExportFolderBtn').hidden = !lastExportPath;
+  }
+
+  async function saveExport(format) {
+    if (!model) {
+      toast('请先生成模型');
+      return;
+    }
+    try {
+      const response = await fetch('/api/export/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format,
+          revision_id: activeRevisionID,
+          suggested_name: suggestedExportName(format)
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw Error(payload.error || '导出失败');
+      if (payload.cancelled) return;
+      showExportResult(payload);
+      toast('结构文件已保存');
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
+  async function openExportFolder() {
+    if (!lastExportPath) {
+      toast('还没有导出的文件');
+      return;
+    }
+    try {
+      const response = await fetch('/api/open-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: lastExportPath })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw Error(payload.error || '无法打开文件夹');
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
+  function applyLanguage() {
+    const lang = $('languageMode')?.value || 'zh';
+    document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+    const text = lang === 'en'
+      ? {
+          sub: 'Titanium alloy modeling · visualization · export',
+          model: 'Model',
+          structure: 'Structure',
+          validation: 'Check',
+          export: 'Export',
+          base: 'Base model',
+          defect: 'Defects',
+          surface: 'Surface',
+          interface: 'α/β Interface',
+          build: 'Generate & check model',
+          manual: 'Manual',
+          exit: 'Exit'
+        }
+      : {
+          sub: '钛合金专属建模 · 可视化 · 导出',
+          model: '建模',
+          structure: '结构',
+          validation: '检查',
+          export: '导出',
+          base: '基础模型',
+          defect: '缺陷',
+          surface: '表面',
+          interface: 'α/β 界面',
+          build: '生成并检查模型',
+          manual: '手册',
+          exit: '退出'
+        };
+    document.querySelector('.sub').textContent = text.sub;
+    document.querySelector('.mobileTabs [data-mobile-panel="model"]').textContent = text.model;
+    document.querySelector('.mobileTabs [data-mobile-panel="structure"]').textContent = text.structure;
+    document.querySelector('.mobileTabs [data-mobile-panel="validation"]').textContent = text.validation;
+    document.querySelector('.mobileTabs [data-mobile-panel="export"]').textContent = text.export;
+    document.querySelector('[data-module="random"]').textContent = text.base;
+    document.querySelector('[data-module="vacancy"]').textContent = text.defect;
+    document.querySelector('[data-module="surface"]').textContent = text.surface;
+    document.querySelector('[data-module="interface"]').textContent = text.interface;
+    $('buildBtn').textContent = text.build;
+    $('manualBtn').textContent = text.manual;
+    $('exitBtn').textContent = text.exit;
+  }
+
   $('viewReset').onclick = () => {
     rotX = -0.35;
     rotY = 0.55;
@@ -965,11 +1047,13 @@
   });
   $('projectionBtn').onclick = () => {
     orthographic = !orthographic;
-    $('projectionBtn').textContent = orthographic ? 'Orthographic' : 'Perspective';
+    $('projectionBtn').textContent = orthographic ? '正交' : '透视';
     draw3d();
   };
   $('renderMode').onchange = draw3d;
+  $('renderQuality').onchange = draw3d;
   $('atomRadius').oninput = draw3d;
+  $('exportPngBtn').onclick = exportStructurePNG;
   bindColorControl('colorTi', 'Ti');
   bindColorControl('colorAl', 'Al');
   bindColorControl('colorV', 'V');
@@ -982,19 +1066,19 @@
 
   document.querySelectorAll('.nav').forEach((b) => { b.onclick = () => setModule(b.dataset.module); });
   $('phase').addEventListener('change', updatePhaseControls);
+  $('alloyType')?.addEventListener('change', updateAlloyControls);
+  $('languageMode')?.addEventListener('change', applyLanguage);
   $('interfaceTopology')?.addEventListener('change', updateInterfaceTopologyControls);
   $('buildBtn').onclick = build;
   document.querySelectorAll('[data-export]').forEach((b) => {
     b.onclick = () => model
-	  ? downloadBlob(`/api/export?format=${b.dataset.export}${activeRevisionID ? `&revision_id=${encodeURIComponent(activeRevisionID)}` : ''}`, 'model.dat')
-      : toast('Generate a model first');
+	  ? saveExport(b.dataset.export)
+      : toast('请先生成模型');
   });
-  $('eosBatchBtn').onclick = () => downloadBlob('/api/export-batch?format=poscar', 'TiAlloyStudio-EOS-POSCAR.zip');
-  $('gsfeBatchBtn').onclick = () => downloadBlob('/api/export-batch?format=poscar', 'TiAlloyStudio-GSFE-POSCAR.zip');
+  $('openExportFolderBtn')?.addEventListener('click', openExportFolder);
   $('manualBtn').onclick = () => downloadBlob('/manual', 'TiAlloyStudio-Manual.docx');
 	$('refreshCapabilities').onclick = refreshCapabilities;
-	$('probeConnectors').onclick = probeConnectors;
-  $('applyEnergy').onclick = applyEnergies;
+	$('probeConnectors')?.addEventListener('click', probeConnectors);
   $('exitBtn').onclick = () => fetch('/api/exit', { method: 'POST' });
   window.addEventListener('resize', () => {
     draw3d();
@@ -1023,13 +1107,14 @@
 	  showRevision,
 	  setActiveRevision(id) {
 		activeRevisionID = id || '';
-		if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `Revision ${activeRevisionID.slice(0, 8)}` : 'No active revision';
+		if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `结构 ${activeRevisionID.slice(0, 8)}` : '无当前结构';
 	  },
 	  editFromRevision(id) { pendingEditParentID = id || ''; },
 	  switchMobilePanel,
 	  get activeRevisionID() { return activeRevisionID; }
 	};
 
+  applyLanguage();
   setModule('random');
 	refreshCapabilities();
   build();

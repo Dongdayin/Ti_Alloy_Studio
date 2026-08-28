@@ -9,6 +9,8 @@ body{margin:0;min-width:0}
 .badge{display:inline-block;padding:5px 9px;border-radius:12px;font-size:11px;background:#33465c;color:#fff}
 .topActions{display:flex;align-items:center;gap:7px}
 .topActions button{border:1px solid #45596f;background:#243448;color:#dce6f2;border-radius:5px;padding:6px 10px;cursor:pointer}
+.languageControl{margin:0;display:flex;flex-direction:row;align-items:center;gap:6px;color:#dce6f2;font-size:12px}
+.languageControl select{width:92px;min-height:30px;padding:4px 7px;background:#243448;color:#fff;border-color:#45596f}
 .mobileTabs{display:none}
 .layout{display:grid;grid-template-columns:292px minmax(560px,1fr) 326px;gap:10px;padding:10px;height:calc(100vh - 58px);min-height:0;overflow:hidden}
 .inspector,.sidebar{overflow:auto;min-height:0}
@@ -17,6 +19,8 @@ body{margin:0;min-width:0}
 .nav{width:100%;height:39px;border:0;border-left:3px solid transparent;background:0 0;text-align:left;padding:0 10px;color:#39485a;cursor:pointer}
 .nav.active{background:#edf4ff;border-left-color:var(--accent);font-weight:600;color:#164e9f}
 .form{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.workflowBlock{border:1px solid #e0e7ef;border-radius:8px;background:#fbfcfe;padding:10px;margin:8px 0}
+.workflowBlock h3,#defectControls h3,#surfaceControls h3,#interfaceControls h3{margin:0 0 8px;font-size:14px;color:#1f3f68}
 label{font-size:11px;color:#556274;display:flex;flex-direction:column;gap:4px;margin:7px 0}
 input,select,textarea{width:100%;border:1px solid #cbd2db;border-radius:5px;padding:7px 8px;background:#fff;color:#18212d;font:inherit;font-size:12px;outline:0}
 .double,.triple{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
@@ -32,7 +36,7 @@ details{border-top:1px dashed #e0e4e9;margin-top:8px;padding-top:7px}
 .panelHead span{font-size:10px;color:var(--muted)}
 .viewerToolbar{display:flex;align-items:center;gap:6px;margin:5px 0 7px;flex-wrap:wrap;flex:0 0 auto}
 .connectorDetails button,.energyBox button,.exportGrid button,.revisionActions button,.viewerToolbar button{border:1px solid #c9d2de;background:#f8fafc;border-radius:5px;padding:7px 9px;cursor:pointer;color:#344256}
-.radiusControl{margin:0 0 0 auto;display:flex;flex-direction:row;align-items:center;gap:6px}
+.radiusControl{margin:0;display:flex;flex-direction:row;align-items:center;gap:6px}
 .radiusControl input{width:90px;padding:0}
 .canvasWrap{position:relative;flex:1 1 auto;height:0;min-height:180px;overflow:hidden}
 .chartWrap{position:relative;min-height:0}
@@ -68,6 +72,8 @@ details{border-top:1px dashed #e0e4e9;margin-top:8px;padding-top:7px}
 .diagnosticActions{margin-top:8px}
 .exportGrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .exportGrid .wide{grid-column:1/-1;font-weight:600}
+.exportResult{margin-top:8px;padding:8px;border:1px solid #cfe0f6;background:#f4f8ff;border-radius:6px;font-size:11px;line-height:1.45;color:#233247;overflow-wrap:anywhere}
+#openExportFolderBtn{margin-top:7px;border:1px solid #c9d2de;background:#f8fafc;border-radius:5px;padding:7px 9px;cursor:pointer;color:#344256;width:100%}
 .legend{display:flex;flex-wrap:wrap;gap:7px}
 .revisionHistory{display:flex;flex-direction:column;gap:7px;overflow:visible;margin-top:9px}
 .revisionCard{border:1px solid #dce3eb;border-radius:6px;padding:8px;background:#fbfcfe}

@@ -15,6 +15,7 @@ import (
 
 type BuildRequest struct {
 	Module             string             `json:"module"`
+	AlloyMode          string             `json:"alloy_mode,omitempty"`
 	Phase              string             `json:"phase"`
 	NX                 int                `json:"nx"`
 	NY                 int                `json:"ny"`
@@ -69,6 +70,22 @@ type State struct {
 func NewState() *State { return &State{} }
 
 func defaults(req *BuildRequest) {
+	req.Module = strings.ToLower(strings.TrimSpace(req.Module))
+	if req.Module == "" {
+		req.Module = "random"
+	}
+	req.AlloyMode = strings.ToLower(strings.TrimSpace(req.AlloyMode))
+	if req.AlloyMode == "" {
+		switch req.Module {
+		case "crystal", "random", "sqs":
+			req.AlloyMode = req.Module
+		default:
+			req.AlloyMode = "crystal"
+		}
+	}
+	if req.AlloyMode == "pure" {
+		req.AlloyMode = "crystal"
+	}
 	if req.Phase == "" {
 		req.Phase = "alpha"
 	}
@@ -201,6 +218,103 @@ func allocationFor(host model.Structure, req BuildRequest) (*model.CompositionAl
 	return &a, nil
 }
 
+func applyTitaniumAlloyMode(host model.Structure, req BuildRequest, mode string, out *BuildResponse, allowATAT bool) error {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" || mode == "crystal" || mode == "pure" {
+		out.Structure = host
+		if out.Structure.Meta == nil {
+			out.Structure.Meta = map[string]any{}
+		}
+		out.Structure.Meta["titanium_alloy_mode"] = "crystal"
+		return nil
+	}
+
+	alloc, err := allocationFor(host, req)
+	if err != nil {
+		return err
+	}
+	out.Allocation = alloc
+	out.Analysis["seed"] = req.Seed
+	out.Analysis["composition_resolution_at_percent"] = alloc.ResolutionAtPercent
+	out.Analysis["rms_atomic_percent_error"] = alloc.RMSAtomicPercentError
+	out.Analysis["rms_weight_percent_error"] = alloc.RMSWeightPercentError
+
+	switch mode {
+	case "random":
+		out.Structure = model.RandomSubstitution(host, *alloc, req.Seed)
+		out.Structure.Meta["titanium_alloy_mode"] = "random"
+		return nil
+
+	case "sqs":
+		switch req.SQSBackend {
+		case "native":
+			r, err := model.GenerateSQS(host, *alloc, req.Seed, req.SQSShells, req.SQSSteps, 1e-5)
+			if err != nil {
+				return err
+			}
+			out.Structure = r.Structure
+			out.Structure.Meta["titanium_alloy_mode"] = "sqs"
+			out.Structure.Meta["sqs_engine"] = "TiModelCore pair/triplet correlation SQS"
+			out.Structure.Meta["sqs_backend"] = "native"
+			out.Structure.Meta["sqs_scope"] = "selected neighbor-shell pair probabilities and closed triplet probability geometries"
+			out.SQS = &r.Quality
+			out.Analysis["initial_objective"] = r.InitialObjective
+			out.Analysis["objective"] = r.Quality.Objective
+			out.Analysis["max_abs_pair_error"] = r.Quality.MaxAbsPairError
+			out.Analysis["max_abs_triplet_error"] = r.Quality.MaxAbsTripletError
+			out.Analysis["engine"] = "TiModelCore pair/triplet correlation SQS"
+			out.Analysis["scope"] = "pair and triplet occupation-probability residuals for bounded internal geometries; not claimed equivalent to ATAT basis-cluster correlations"
+			out.Analysis["verification_status"] = r.Quality.VerificationStatus
+			out.Series["convergence"] = r.Convergence
+			out.Series["triplet_correlations"] = r.Quality.TripletClusters
+			return nil
+
+		case "atat":
+			if !allowATAT {
+				return errors.New("ATAT SQS is only available for a base SQS alloy model; operation models use the bundled SQS generator")
+			}
+			if req.ATATPairCutoff <= 0 {
+				return errors.New("ATAT pair cutoff must be explicitly specified in angstrom; Ti Alloy Studio does not guess an SQS cluster cutoff")
+			}
+			parent, err := buildBase(req)
+			if err != nil {
+				return err
+			}
+			r, err := engines.RunATATSQS(parent, alloc.ActualAtomicPercent, engines.ATATOptions{
+				Distro:        req.ATATDistro,
+				TotalSites:    alloc.TotalSites,
+				PairCutoff:    req.ATATPairCutoff,
+				TripletCutoff: req.ATATTripletCutoff,
+				RunSeconds:    req.ATATRunSeconds,
+			})
+			if err != nil {
+				return err
+			}
+			if r.Structure.NAtoms() != alloc.TotalSites {
+				return fmt.Errorf("ATAT bestsqs atom count %d does not match requested integer site count %d", r.Structure.NAtoms(), alloc.TotalSites)
+			}
+			out.Structure = r.Structure
+			out.ATAT = &r.Quality
+			out.Analysis["engine"] = "ATAT mcsqs"
+			out.Analysis["command"] = r.Command
+			out.Analysis["distro"] = r.Distro
+			out.Analysis["return_code"] = r.ReturnCode
+			out.Analysis["rms_correlation_difference"] = r.Quality.RMSDifference
+			out.Analysis["max_abs_correlation_difference"] = r.Quality.MaxAbsDifference
+			out.Analysis["pair_cutoff_angstrom"] = req.ATATPairCutoff
+			out.Analysis["triplet_cutoff_angstrom"] = req.ATATTripletCutoff
+			out.Analysis["run_seconds"] = req.ATATRunSeconds
+			out.Series["correlations"] = r.Quality.Clusters
+			return nil
+
+		default:
+			return fmt.Errorf("unsupported SQS backend %q; choose \"native\" or \"atat\"", req.SQSBackend)
+		}
+	default:
+		return fmt.Errorf("unsupported titanium alloy mode %q", mode)
+	}
+}
+
 func clampIndex(i, n int) int {
 	if n <= 0 || i < 0 {
 		return 0
@@ -218,101 +332,14 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 	out.Module = strings.ToLower(req.Module)
 	out.Analysis = map[string]any{}
 	out.Series = map[string]any{}
-	if out.Module == "" {
-		out.Module = "random"
-	}
-
 	switch out.Module {
-	case "crystal":
+	case "crystal", "random", "sqs":
 		host, err := buildHost(req)
 		if err != nil {
 			return out, err
 		}
-		out.Structure = host
-
-	case "random":
-		host, err := buildHost(req)
-		if err != nil {
+		if err := applyTitaniumAlloyMode(host, req, out.Module, &out, true); err != nil {
 			return out, err
-		}
-		alloc, err := allocationFor(host, req)
-		if err != nil {
-			return out, err
-		}
-		out.Allocation = alloc
-		out.Structure = model.RandomSubstitution(host, *alloc, req.Seed)
-		out.Analysis["seed"] = req.Seed
-		out.Analysis["composition_resolution_at_percent"] = alloc.ResolutionAtPercent
-		out.Analysis["rms_atomic_percent_error"] = alloc.RMSAtomicPercentError
-		out.Analysis["rms_weight_percent_error"] = alloc.RMSWeightPercentError
-
-	case "sqs":
-		host, err := buildHost(req)
-		if err != nil {
-			return out, err
-		}
-		alloc, err := allocationFor(host, req)
-		if err != nil {
-			return out, err
-		}
-		out.Allocation = alloc
-		switch req.SQSBackend {
-		case "native":
-			r, err := model.GenerateSQS(host, *alloc, req.Seed, req.SQSShells, req.SQSSteps, 1e-5)
-			if err != nil {
-				return out, err
-			}
-			out.Structure = r.Structure
-			out.Structure.Meta["sqs_engine"] = "TiModelCore pair/triplet correlation SQS"
-			out.Structure.Meta["sqs_backend"] = "native"
-			out.Structure.Meta["sqs_scope"] = "selected neighbor-shell pair probabilities and closed triplet probability geometries"
-			out.SQS = &r.Quality
-			out.Analysis["initial_objective"] = r.InitialObjective
-			out.Analysis["objective"] = r.Quality.Objective
-			out.Analysis["max_abs_pair_error"] = r.Quality.MaxAbsPairError
-			out.Analysis["max_abs_triplet_error"] = r.Quality.MaxAbsTripletError
-			out.Analysis["engine"] = "TiModelCore pair/triplet correlation SQS"
-			out.Analysis["scope"] = "pair and triplet occupation-probability residuals for bounded internal geometries; not claimed equivalent to ATAT basis-cluster correlations"
-			out.Analysis["verification_status"] = r.Quality.VerificationStatus
-			out.Series["convergence"] = r.Convergence
-			out.Series["triplet_correlations"] = r.Quality.TripletClusters
-
-		case "atat":
-			if req.ATATPairCutoff <= 0 {
-				return out, errors.New("ATAT pair cutoff must be explicitly specified in angstrom; Ti Alloy Studio does not guess an SQS cluster cutoff")
-			}
-			parent, err := buildBase(req)
-			if err != nil {
-				return out, err
-			}
-			r, err := engines.RunATATSQS(parent, alloc.ActualAtomicPercent, engines.ATATOptions{
-				Distro:        req.ATATDistro,
-				TotalSites:    alloc.TotalSites,
-				PairCutoff:    req.ATATPairCutoff,
-				TripletCutoff: req.ATATTripletCutoff,
-				RunSeconds:    req.ATATRunSeconds,
-			})
-			if err != nil {
-				return out, err
-			}
-			if r.Structure.NAtoms() != alloc.TotalSites {
-				return out, fmt.Errorf("ATAT bestsqs atom count %d does not match requested integer site count %d", r.Structure.NAtoms(), alloc.TotalSites)
-			}
-			out.Structure = r.Structure
-			out.ATAT = &r.Quality
-			out.Analysis["engine"] = "ATAT mcsqs"
-			out.Analysis["command"] = r.Command
-			out.Analysis["distro"] = r.Distro
-			out.Analysis["return_code"] = r.ReturnCode
-			out.Analysis["rms_correlation_difference"] = r.Quality.RMSDifference
-			out.Analysis["max_abs_correlation_difference"] = r.Quality.MaxAbsDifference
-			out.Analysis["pair_cutoff_angstrom"] = req.ATATPairCutoff
-			out.Analysis["triplet_cutoff_angstrom"] = req.ATATTripletCutoff
-			out.Analysis["run_seconds"] = req.ATATRunSeconds
-			out.Series["correlations"] = r.Quality.Clusters
-
-		default:
-			return out, fmt.Errorf("unsupported SQS backend %q; choose \"native\" or \"atat\"", req.SQSBackend)
 		}
 
 	case "vacancy":
@@ -320,11 +347,16 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		if err != nil {
 			return out, err
 		}
-		idx := clampIndex(req.SiteID, host.NAtoms())
-		out.Structure, err = model.CreateVacancy(host, idx)
+		if err := applyTitaniumAlloyMode(host, req, req.AlloyMode, &out, false); err != nil {
+			return out, err
+		}
+		idx := clampIndex(req.SiteID, out.Structure.NAtoms())
+		out.Structure, err = model.CreateVacancy(out.Structure, idx)
 		if err != nil {
 			return out, err
 		}
+		out.Structure.Meta["operation"] = "vacancy"
+		out.Structure.Meta["titanium_alloy_mode"] = req.AlloyMode
 		out.Analysis["site_id"] = idx
 
 	case "substitution":
@@ -332,11 +364,16 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		if err != nil {
 			return out, err
 		}
-		idx := clampIndex(req.SiteID, host.NAtoms())
-		out.Structure, err = model.CreateSubstitution(host, idx, req.NewSpecies)
+		if err := applyTitaniumAlloyMode(host, req, req.AlloyMode, &out, false); err != nil {
+			return out, err
+		}
+		idx := clampIndex(req.SiteID, out.Structure.NAtoms())
+		out.Structure, err = model.CreateSubstitution(out.Structure, idx, req.NewSpecies)
 		if err != nil {
 			return out, err
 		}
+		out.Structure.Meta["operation"] = "substitution"
+		out.Structure.Meta["titanium_alloy_mode"] = req.AlloyMode
 		out.Analysis["site_id"] = idx
 		out.Analysis["new_species"] = req.NewSpecies
 
@@ -347,7 +384,11 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		} else {
 			surf = model.AlphaSurface(req.SurfacePreset, req.AAlpha, req.CAlpha, [2]int{req.NX, req.NY}, req.NZ, req.Vacuum)
 		}
-		out.Structure = surf.Structure
+		if err := applyTitaniumAlloyMode(surf.Structure, req, req.AlloyMode, &out, false); err != nil {
+			return out, err
+		}
+		out.Structure.Meta["operation"] = "surface"
+		out.Structure.Meta["model_kind"] = "titanium_alloy_surface"
 		out.Analysis["plane"] = surf.Plane
 		out.Analysis["area_angstrom2"] = surf.Area
 		out.Analysis["thickness_angstrom"] = surf.Thickness
@@ -361,7 +402,11 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		}
 		ci := clampIndex(req.InterfaceCandidate, len(cands))
 		m := model.BuildBurgersInterface(g, cands[ci], req.AAlpha, req.CAlpha, req.ABeta, req.NZ, req.NZ, req.InterfaceDistance, req.Vacuum)
-		out.Structure = m.Structure
+		if err := applyTitaniumAlloyMode(m.Structure, req, req.AlloyMode, &out, false); err != nil {
+			return out, err
+		}
+		out.Structure.Meta["operation"] = "interface"
+		out.Structure.Meta["model_kind"] = "titanium_alloy_alpha_beta_interface"
 		out.Analysis["candidate"] = m.Candidate
 		out.Analysis["normal_error_deg"] = g.NormalErrorDeg
 		out.Analysis["direction_error_deg"] = g.DirectionErrorDeg

@@ -10,148 +10,140 @@
 <header class="topbar">
   <div>
     <strong>Ti Alloy Studio</strong>
-    <span class="sub">Titanium Alloy Modeling · Validation · Visualization</span>
+    <span class="sub">钛合金专属建模 · 可视化 · 导出</span>
   </div>
   <div class="topActions">
-    <button id="manualBtn" type="button">Manual</button>
-    <button id="exitBtn" type="button">Exit</button>
-    <div id="statusBadge" class="badge">Ready</div>
+    <label class="languageControl">语言
+      <select id="languageMode">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+    <button id="manualBtn" type="button">手册</button>
+    <button id="exitBtn" type="button">退出</button>
+    <div id="statusBadge" class="badge">就绪</div>
   </div>
 </header>
 
 <nav class="mobileTabs" aria-label="Workspace sections">
-  <button type="button" class="active" data-mobile-panel="model" aria-selected="true">Model</button>
-  <button type="button" data-mobile-panel="structure" aria-selected="false">Structure</button>
-  <button type="button" data-mobile-panel="validation" aria-selected="false">Validation</button>
-  <button type="button" data-mobile-panel="export" aria-selected="false">Export</button>
+  <button type="button" class="active" data-mobile-panel="model" aria-selected="true">建模</button>
+  <button type="button" data-mobile-panel="structure" aria-selected="false">结构</button>
+  <button type="button" data-mobile-panel="validation" aria-selected="false">检查</button>
+  <button type="button" data-mobile-panel="export" aria-selected="false">导出</button>
 </nav>
 
 <main class="layout">
   <aside class="sidebar" data-workspace-panel="model">
-    <h2>Model recipe</h2>
+    <h2>钛合金建模流程</h2>
     <nav id="moduleNav">
-      <button class="nav active" data-module="random">Crystal / Alloy</button>
-      <button class="nav" data-module="sqs">SQS</button>
-      <button class="nav" data-module="vacancy">Defects / Surface</button>
-      <button class="nav" data-module="interface">α/β Interface</button>
-      <button class="nav" data-module="eos">EOS</button>
-      <button class="nav" data-module="gsfe">GSFE</button>
+      <button class="nav active" data-module="random">基础模型</button>
+      <button class="nav" data-module="vacancy">缺陷</button>
+      <button class="nav" data-module="surface">表面</button>
+      <button class="nav" data-module="interface">α/β 界面</button>
     </nav>
 
     <section class="form" id="controls">
-      <label id="phaseControl">Phase
-        <select id="phase">
-          <option value="alpha">α-Ti · HCP</option>
-          <option value="beta">β-Ti · BCC</option>
-        </select>
-      </label>
-      <p id="phaseHint" class="micro">α-Ti uses HCP lattice parameters aα and cα.</p>
-
-      <div class="triple">
-        <label>Nx<input id="nx" type="number" min="1" value="4"></label>
-        <label>Ny<input id="ny" type="number" min="1" value="4"></label>
-        <label>Nz<input id="nz" type="number" min="1" value="6"></label>
-      </div>
-
-      <details>
-        <summary>Optional target lattice-vector lengths (Å)</summary>
-        <div class="triple">
-          <label>Lx ≥<input id="targetX" type="number" min="0" step="1" value="0"></label>
-          <label>Ly ≥<input id="targetY" type="number" min="0" step="1" value="0"></label>
-          <label>Lz ≥<input id="targetZ" type="number" min="0" step="1" value="0"></label>
-        </div>
-      </details>
-
-      <details open>
-        <summary id="latticeSummary">Lattice · α-Ti HCP</summary>
-        <div class="triple">
-          <label data-phase-field="alpha">aα Å<input id="aAlpha" type="number" step="0.001" value="2.951"></label>
-          <label data-phase-field="alpha">cα Å<input id="cAlpha" type="number" step="0.001" value="4.684"></label>
-          <label data-phase-field="beta">aβ Å<input id="aBeta" type="number" step="0.001" value="3.306"></label>
-        </div>
-      </details>
-
-      <div id="compositionControls">
-        <label>Recipe
+      <div id="titaniumAlloyControls" class="workflowBlock">
+        <h3>1. 设定 Ti 合金</h3>
+        <label>模型类型
           <select id="alloyType">
-            <option value="random">Random solid solution</option>
-            <option value="crystal">Pure phase crystal</option>
+            <option value="crystal">Ti 单晶</option>
+            <option value="random" selected>随机 Ti 合金</option>
+            <option value="sqs">SQS Ti 合金</option>
           </select>
         </label>
-        <label>Composition, wt.%<input id="composition" value="Al=6,V=4" spellcheck="false"></label>
-        <label>Random seed<input id="seed" type="number" value="20260825"></label>
+        <label id="phaseControl">晶体结构
+          <select id="phase">
+            <option value="alpha">α-Ti · HCP</option>
+            <option value="beta">β-Ti · BCC</option>
+          </select>
+        </label>
+        <p id="phaseHint" class="micro">α-Ti 使用 HCP 晶格参数 aα 和 cα。</p>
+        <label id="compositionLabel">合金元素与质量分数 wt.%<input id="composition" value="Al=6,V=4" spellcheck="false"></label>
+        <label id="seedLabel">随机种子<input id="seed" type="number" value="20260825"></label>
+        <p class="micro">Ti 是基体元素；这里只输入 Al=6,V=4 这样的添加元素比例，剩余自动作为 Ti。</p>
       </div>
 
+      <div id="baseCrystalControls" class="workflowBlock">
+        <h3>2. 晶格常数与超胞</h3>
+        <div class="triple">
+          <label>Nx<input id="nx" type="number" min="1" value="4"></label>
+          <label>Ny<input id="ny" type="number" min="1" value="4"></label>
+          <label>Nz<input id="nz" type="number" min="1" value="6"></label>
+        </div>
+
+        <details>
+          <summary>可选目标尺寸（Å）</summary>
+          <div class="triple">
+            <label>Lx ≥<input id="targetX" type="number" min="0" step="1" value="0"></label>
+            <label>Ly ≥<input id="targetY" type="number" min="0" step="1" value="0"></label>
+            <label>Lz ≥<input id="targetZ" type="number" min="0" step="1" value="0"></label>
+          </div>
+        </details>
+
+        <details open>
+          <summary id="latticeSummary">晶格常数 · α-Ti HCP</summary>
+          <div class="triple">
+            <label data-phase-field="alpha">aα Å<input id="aAlpha" type="number" step="0.001" value="2.951"></label>
+            <label data-phase-field="alpha">cα Å<input id="cAlpha" type="number" step="0.001" value="4.684"></label>
+            <label data-phase-field="beta">aβ Å<input id="aBeta" type="number" step="0.001" value="3.306"></label>
+          </div>
+        </details>
+      </div>
+
+      <p id="operationHint" class="micro">先生成基础模型；需要缺陷、表面或 α/β 界面时再进入对应页设置参数。不填写/不选择操作就跳过。</p>
+
       <div id="sqsControls" class="conditional">
-        <label>SQS backend
+        <label>SQS 生成方式
           <select id="sqsBackend">
-            <option value="native">TiModelCore correlation SQS · built in</option>
+            <option value="native">内置 SQS · 不依赖 WSL/ATAT</option>
           </select>
         </label>
         <p class="micro">
-          The built-in SQS route optimizes pair probabilities and closed triplet probability geometries for the selected neighbor shells while preserving the exact integer composition. Residuals and the deterministic seed are stored with the revision. It is not labeled ATAT-verified; converge cell size, geometry set, and the property of interest.
+          内置 SQS 会在所选近邻壳层内优化元素分布，并保存残差与随机种子。它用于建模，不做能量或性能计算。
         </p>
         <details open>
-          <summary>Built-in pair-SQS settings</summary>
+          <summary>SQS 参数</summary>
           <div class="double">
-            <label>Pair shells<input id="sqsShells" type="number" value="2" min="1"></label>
-            <label>Optimization steps<input id="sqsSteps" type="number" value="500" min="1"></label>
+            <label>近邻壳层<input id="sqsShells" type="number" value="2" min="1"></label>
+            <label>优化步数<input id="sqsSteps" type="number" value="500" min="1"></label>
           </div>
-        </details>
-        <details class="legacyConnector">
-          <summary>Legacy ATAT connector settings (optional)</summary>
-          <div class="double">
-            <label>WSL distro
-              <input id="atatDistro" value="" placeholder="blank = WSL default">
-            </label>
-            <label>ATAT run time, s
-              <input id="atatRunSeconds" type="number" value="30" min="1">
-            </label>
-          </div>
-          <div class="double">
-            <label>Pair cutoff, Å
-              <input id="atatPairCutoff" type="number" min="0" step="0.1" value="0">
-            </label>
-            <label>Triplet cutoff, Å
-              <input id="atatTripletCutoff" type="number" min="0" step="0.1" value="0">
-            </label>
-          </div>
-          <p class="micro">
-            ATAT is optional and only used when selected explicitly. It requires a WSL environment containing mcsqs/corrdump. Pair cutoff must be entered explicitly; Ti Alloy Studio does not invent a universal SQS cluster cutoff. Triplet = 0 disables three-body clusters.
-          </p>
         </details>
       </div>
 
       <div id="defectControls" class="conditional">
-        <label>Model
+        <h3>3. 缺陷参数</h3>
+        <label>缺陷类型
           <select id="defectType">
-            <option value="vacancy">Vacancy</option>
-            <option value="substitution">Substitution</option>
-            <option value="surface">Surface slab</option>
+            <option value="vacancy">空位</option>
+            <option value="substitution">替换原子</option>
           </select>
         </label>
         <div class="double">
-          <label>Site ID<input id="siteId" type="number" value="0" min="0"></label>
-          <label>New element<input id="newSpecies" value="Al"></label>
+          <label>原子编号<input id="siteId" type="number" value="0" min="0"></label>
+          <label>替换元素<input id="newSpecies" value="Al"></label>
         </div>
-        <label>Surface preset
+      </div>
+
+      <div id="surfaceControls" class="conditional">
+        <h3>3. 表面参数</h3>
+        <label>表面取向
           <select id="surfacePreset">
             <option value="basal_0001" data-phase-option="alpha">α (0001) basal</option>
             <option value="prismatic_10-10" data-phase-option="alpha">α (10-10) prismatic</option>
             <option value="100" data-phase-option="beta">β (100)</option>
           </select>
         </label>
-        <label>Vacuum Å<input id="vacuum" type="number" value="15" step="0.5"></label>
+        <label>真空层 Å<input id="vacuum" type="number" value="15" step="0.5"></label>
       </div>
 
       <div id="interfaceControls" class="conditional">
         <div class="interfaceIntro">
-          <strong>α + β interface</strong>
-          <span>This recipe always builds a two-phase α/β interface. No single-phase selector is needed here.</span>
+          <strong>3. α/β 界面参数</strong>
         </div>
         <details open>
-          <summary>Interface orientation</summary>
-          <label>Orientation relation
+          <summary>界面两侧晶体取向</summary>
+          <label>取向关系
             <select id="interfaceOrientationPreset">
               <option value="burgers">Burgers OR · α (0001) ∥ β (110), α [11-20] ∥ β [1-11]</option>
             </select>
@@ -160,72 +152,60 @@
             <div><span>Interface plane</span><strong>α (0001) ∥ β (110)</strong></div>
             <div><span>In-plane direction</span><strong>α [11-20] ∥ β [1-11]</strong></div>
           </div>
-          <p class="micro">Phase 1 exposes the validated Burgers orientation relation. Arbitrary Miller-index orientation is a separate modeling algorithm, not a front-end-only switch.</p>
+          <p class="micro">当前阶段使用 Burgers 取向关系构建 α/β 界面；后续可扩展任意 Miller 指数。</p>
         </details>
-        <label>Cell topology / interface position
+        <label>界面位置与边界类型
           <select id="interfaceTopology">
-            <option value="interface_periodic_bicrystal">Periodic bicrystal · two α/β interfaces, no vacuum</option>
-            <option value="interface_single_slab">Single-interface slab · one α/β interface plus vacuum surfaces</option>
+            <option value="interface_periodic_bicrystal">周期双晶胞 · 两个 α/β 界面，无真空层</option>
+            <option value="interface_single_slab">单界面薄层 · 一个 α/β 界面，两侧真空表面</option>
           </select>
         </label>
         <div class="double">
-          <label>Search up to this repeat<input id="interfaceMatchLimit" type="number" value="8" min="1" max="32"></label>
-          <label>Matching option<input id="interfaceCandidate" type="number" value="0" min="0"></label>
+          <label>最大匹配重复数<input id="interfaceMatchLimit" type="number" value="8" min="1" max="32"></label>
+          <label>候选匹配编号<input id="interfaceCandidate" type="number" value="0" min="0"></label>
         </div>
         <p class="micro">
-          Matching option 0 is the lowest imposed-strain candidate found in the search. Increase it only when you want to inspect alternate α/β repeat combinations.
+          候选 0 是当前搜索内几何失配最低的 α/β 重复组合；增大编号可查看其它匹配。
         </p>
-        <label>Initial α–β gap Å<input id="interfaceDistance" type="number" value="2.5" step="0.1"></label>
-        <label id="interfaceVacuumLabel">Vacuum Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label>
+        <label>初始 α–β 间距 Å<input id="interfaceDistance" type="number" value="2.5" step="0.1"></label>
+        <label id="interfaceVacuumLabel">真空层 Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label>
       </div>
 
-      <div id="eosControls" class="conditional">
-        <label>V/V₀ sequence<input id="eosRatios" value="0.94,0.96,0.98,1.00,1.02,1.04,1.06"></label>
-        <label>Displayed configuration index<input id="eosIndex" type="number" value="3" min="0"></label>
-        <p class="micro">EOS export creates one POSCAR per volume point plus manifest.csv. Energy fitting is not invented before DFT data exist.</p>
-      </div>
-
-      <div id="gsfeControls" class="conditional">
-        <label>Slip system
-          <select id="gsfePreset">
-            <option value="basal_a" data-phase-option="alpha">α basal {0001}&lt;a&gt;</option>
-            <option value="prismatic_a" data-phase-option="alpha">α prismatic {10-10}&lt;a&gt;</option>
-            <option value="110_111" data-phase-option="beta">β {110}&lt;111&gt;</option>
-          </select>
-        </label>
-        <div class="double">
-          <label>Path steps<input id="gsfeSteps" type="number" value="10" min="2"></label>
-          <label>Displayed index<input id="gsfeIndex" type="number" value="5" min="0"></label>
-        </div>
-      </div>
-
-      <button id="buildBtn" class="primary">Generate & validate</button>
+      <button id="buildBtn" class="primary">生成并检查模型</button>
     </section>
   </aside>
 
   <section class="workspace" data-workspace-panel="structure">
     <div class="panel viewerPanel">
       <div class="panelHead">
-        <div><h2>3D Structure</h2><span id="structureSummary">—</span></div>
+        <div><h2>3D 结构</h2><span id="structureSummary">—</span></div>
         <div class="legend" id="legend"></div>
       </div>
       <div class="viewerToolbar">
-        <button id="viewReset" type="button">Reset</button>
+        <button id="viewReset" type="button">复位</button>
         <button data-view="xy" type="button">XY</button>
         <button data-view="xz" type="button">XZ</button>
         <button data-view="yz" type="button">YZ</button>
-        <button id="projectionBtn" type="button">Orthographic</button>
-        <label class="renderControl">Render
+        <button id="projectionBtn" type="button">正交</button>
+        <label class="renderControl">着色
           <select id="renderMode">
-            <option value="element">Element colors</option>
-            <option value="phase">α/β phase colors</option>
-            <option value="depth">Depth shaded</option>
+            <option value="element">按元素</option>
+            <option value="phase">按 α/β 区域</option>
+            <option value="depth">深度阴影</option>
           </select>
         </label>
-        <label class="radiusControl">Atom size<input id="atomRadius" type="range" min="2" max="10" value="5" step="0.5"></label>
+        <label class="renderControl">渲染质量
+          <select id="renderQuality">
+            <option value="fast">快速</option>
+            <option value="quality">高质量</option>
+            <option value="publication">论文图</option>
+          </select>
+        </label>
+        <label class="radiusControl">原子大小<input id="atomRadius" type="range" min="2" max="10" value="5" step="0.5"></label>
+        <button id="exportPngBtn" type="button">导出 PNG</button>
       </div>
       <details class="viewerColors">
-        <summary>Atom colors</summary>
+        <summary>原子颜色</summary>
         <div class="colorGrid">
           <label>Ti<input id="colorTi" type="color" value="#8193a6"></label>
           <label>Al<input id="colorAl" type="color" value="#d49b35"></label>
@@ -238,14 +218,14 @@
         <canvas id="structureCanvas" width="1000" height="600" aria-label="Interactive 3D atomic structure"></canvas>
         <div id="atomTooltip" class="tooltip"></div>
       </div>
-      <p class="hint">Drag: rotate · Shift+drag: pan · Wheel: zoom · Click atom: pin details. Use Render to switch element, phase-region, or depth-shaded view.</p>
-      <div id="atomSelection" class="selectionBar">No atom selected</div>
+      <p class="hint">拖动：旋转 · Shift+拖动：平移 · 滚轮：缩放 · 点击原子：固定详情。</p>
+      <div id="atomSelection" class="selectionBar">未选择原子</div>
     </div>
 
     <div class="lowerGrid">
       <div class="panel chartPanel">
-        <div class="panelHead"><h2>Composition</h2><span>Atomic percent</span></div>
-        <div id="compositionHeadline" class="chartHeadline">Generate a structure to see composition.</div>
+        <div class="panelHead"><h2>成分</h2><span>原子百分比</span></div>
+        <div id="compositionHeadline" class="chartHeadline">生成模型后显示成分。</div>
         <div class="chartWrap">
           <canvas id="compositionCanvas" width="700" height="300"></canvas>
           <div id="compositionTooltip" class="tooltip chartTooltip"></div>
@@ -254,65 +234,53 @@
       </div>
 
       <div class="panel chartPanel">
-        <div class="panelHead"><h2>Key geometry</h2><span id="analysisTitle">Model metrics</span></div>
-        <div id="analysisHeadline" class="chartHeadline">Generate a structure to see key values.</div>
+        <div class="panelHead"><h2>几何摘要</h2><span id="analysisTitle">模型参数</span></div>
+        <div id="analysisHeadline" class="chartHeadline">生成模型后显示关键参数。</div>
         <div class="chartWrap">
           <canvas id="analysisCanvas" width="700" height="300"></canvas>
           <div id="chartTooltip" class="tooltip chartTooltip"></div>
         </div>
         <div id="analysisTable" class="dataTable"></div>
-        <div id="energyBox" class="energyBox" hidden>
-          <label>Calculated total energies (eV), optional
-            <textarea id="energies" rows="2" placeholder="Paste values to plot E(V) or calculate GSFE"></textarea>
-          </label>
-          <button id="applyEnergy" type="button">Apply energies</button>
-        </div>
       </div>
     </div>
   </section>
 
   <aside class="inspector" data-workspace-panel="validation-export">
     <section class="panel info" data-mobile-section="validation">
-      <h2>Model information</h2>
-      <dl id="modelInfo"><dt>Status</dt><dd>No model</dd></dl>
+      <h2>模型信息</h2>
+      <dl id="modelInfo"><dt>状态</dt><dd>尚未生成</dd></dl>
     </section>
 
     <section class="panel" data-mobile-section="validation">
-      <div class="panelHead"><h2>Validation</h2><span id="validationStatus" class="badge">—</span></div>
+      <div class="panelHead"><h2>结构检查</h2><span id="validationStatus" class="badge">—</span></div>
       <div id="validationPanel" class="checks"></div>
     </section>
 
     <section class="panel" data-mobile-section="export">
-      <div class="panelHead"><h2>Offline modeling package</h2><span id="capabilityStatus" class="badge">Checking</span></div>
-      <p id="capabilitySummary" class="statusSummary">Checking the included modeling components…</p>
+      <div class="panelHead"><h2>Offline modeling package</h2><span id="capabilityStatus" class="badge">检查中</span></div>
+      <p id="capabilitySummary" class="statusSummary">正在检查软件内置建模组件…</p>
       <details class="diagnostics">
         <summary>Troubleshooting details</summary>
-        <p class="micro">Open this only when the software reports a component problem.</p>
+        <p class="micro">只有软件提示组件异常时才需要打开这里。</p>
         <p id="diagnosticVersion" class="micro"></p>
         <div id="capabilityPanel" class="enginePanel"></div>
         <div id="enginePanel" class="enginePanel"></div>
         <div class="diagnosticActions"><button id="refreshCapabilities" type="button">Check included components</button></div>
-        <details class="connectorDetails">
-          <summary>Check optional external tools</summary>
-          <p class="micro">External tools are not required for modeling or export.</p>
-          <button id="probeConnectors" type="button">Check this computer</button>
-          <div id="connectorPanel" class="enginePanel"></div>
-        </details>
       </details>
     </section>
 
     <section class="panel" data-mobile-section="export">
-      <div class="panelHead"><h2>Export</h2><span id="activeRevisionLabel">No active revision</span></div>
+      <div class="panelHead"><h2>导出结构</h2><span id="activeRevisionLabel">无当前结构</span></div>
       <div class="exportGrid">
         <button data-export="poscar">VASP POSCAR</button>
         <button data-export="xyz">XYZ</button>
         <button data-export="extxyz">GPUMD extXYZ</button>
         <button data-export="lammps">LAMMPS data</button>
         <button data-export="cif">CIF</button>
-        <button id="eosBatchBtn" class="wide" data-export-batch="poscar" disabled>EOS batch ZIP</button>
-        <button id="gsfeBatchBtn" class="wide" data-export-batch="poscar" disabled>GSFE batch ZIP</button>
       </div>
-      <p id="exportHint" class="micro">Exports the currently displayed structure.</p>
+      <div id="exportResult" class="exportResult" hidden></div>
+      <button id="openExportFolderBtn" type="button" hidden>打开导出文件夹</button>
+      <p id="exportHint" class="micro">导出当前显示结构。保存完成后会显示文件名、大小和 SHA-256。</p>
     </section>
   </aside>
 </main>

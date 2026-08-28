@@ -23,19 +23,24 @@ func servedAsset(t *testing.T, path string) string {
 
 func TestWorkbenchServesInteractiveUI(t *testing.T) {
 	s := servedAsset(t, "/")
-	for _, needle := range []string{"Ti Alloy Studio", "Crystal / Alloy", "SQS", "Defects / Surface", "α/β Interface", "EOS", "GSFE", "structureCanvas", "analysisCanvas", "validationPanel"} {
+	for _, needle := range []string{"Ti Alloy Studio", "钛合金专属建模", "基础模型", "缺陷", "表面", "α/β 界面", "structureCanvas", "analysisCanvas", "validationPanel"} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("missing %q", needle)
 		}
 	}
+	for _, obsolete := range []string{`data-module="eos"`, `data-module="gsfe"`, "EOS batch ZIP", "GSFE batch ZIP", "Calculated total energies"} {
+		if strings.Contains(s, obsolete) {
+			t.Fatalf("standalone project-calculation UI is still exposed: %q", obsolete)
+		}
+	}
 }
 
-func TestWorkbenchUsesRepeatableBlobDownloadsAndInteractiveValues(t *testing.T) {
+func TestWorkbenchUsesSaveAsExportsAndInteractiveValues(t *testing.T) {
 	s := servedAsset(t, "/app.js")
 	if strings.Contains(s, "location.href=`/api/export") {
 		t.Fatal("export still navigates the application away")
 	}
-	for _, needle := range []string{"URL.createObjectURL", "chartTooltip", "atomTooltip"} {
+	for _, needle := range []string{"/api/export/save", "showExportResult", "openExportFolder", "chartTooltip", "atomTooltip"} {
 		if !strings.Contains(s, needle) {
 			t.Fatalf("missing %q", needle)
 		}
@@ -106,9 +111,14 @@ func TestWorkbenchKeepsTechnicalDiagnosticsOutOfThePrimaryInterface(t *testing.T
 			t.Errorf("project history still exposes technical detail %q", obsolete)
 		}
 	}
-	for _, needle := range []string{"Version ${", "Current", "Continue editing", "More actions"} {
+	for _, obsolete := range []string{"Version ${", "Current", "Continue editing", "More actions", "versions"} {
+		if strings.Contains(project, obsolete) {
+			t.Errorf("project history still uses old technical wording %q", obsolete)
+		}
+	}
+	for _, needle := range []string{"结构 ${", "当前", "修改此结构", "操作"} {
 		if !strings.Contains(project, needle) {
-			t.Errorf("simplified revision history missing %q", needle)
+			t.Errorf("modeling history wording missing %q", needle)
 		}
 	}
 
@@ -129,7 +139,7 @@ func TestPhaseSelectionRefreshesPhaseSpecificControls(t *testing.T) {
 	}
 
 	appJS := servedAsset(t, "/app.js")
-	for _, needle := range []string{"function updatePhaseControls", "$('phase').addEventListener('change', updatePhaseControls)", "syncPhaseOptions('surfacePreset'", "syncPhaseOptions('gsfePreset'"} {
+	for _, needle := range []string{"function updatePhaseControls", "$('phase').addEventListener('change', updatePhaseControls)", "syncPhaseOptions('surfacePreset'"} {
 		if !strings.Contains(appJS, needle) {
 			t.Errorf("phase-aware form behavior missing %q", needle)
 		}
@@ -156,6 +166,9 @@ func TestInterfaceRecipeUsesAlphaBetaSpecificControls(t *testing.T) {
 			t.Errorf("interface controls missing %q", needle)
 		}
 	}
+	if strings.Contains(page, "This recipe always builds") || strings.Contains(page, "No single-phase selector") {
+		t.Error("interface panel still contains unnecessary explanatory wording")
+	}
 
 	appJS := servedAsset(t, "/app.js")
 	for _, needle := range []string{
@@ -174,9 +187,13 @@ func TestStructureViewerHasRenderModesAndAtomColorControls(t *testing.T) {
 	page := servedAsset(t, "/")
 	for _, needle := range []string{
 		`id="renderMode"`,
+		`id="renderQuality"`,
+		`id="exportPngBtn"`,
 		`value="element"`,
 		`value="phase"`,
 		`value="depth"`,
+		`value="quality"`,
+		`value="publication"`,
 		`id="colorTi"`,
 		`id="colorAl"`,
 		`id="colorV"`,
@@ -191,8 +208,11 @@ func TestStructureViewerHasRenderModesAndAtomColorControls(t *testing.T) {
 	appJS := servedAsset(t, "/app.js")
 	for _, needle := range []string{
 		"function currentAtomColor",
+		"function drawQualityAtom",
+		"function exportStructurePNG",
 		"function bindColorControl",
 		"$('renderMode').onchange",
+		"$('renderQuality').onchange",
 		"bindColorControl('colorTi', 'Ti')",
 		"bindColorControl('colorAlpha', 'alpha')",
 	} {
@@ -207,7 +227,6 @@ func TestResultPanelsExposeReadableHighlightsInsteadOfRawMetricPlots(t *testing.
 	for _, needle := range []string{
 		`id="compositionHeadline"`,
 		`id="analysisHeadline"`,
-		`id="energyBox"`,
 	} {
 		if !strings.Contains(page, needle) {
 			t.Errorf("result highlight markup missing %q", needle)
@@ -218,7 +237,6 @@ func TestResultPanelsExposeReadableHighlightsInsteadOfRawMetricPlots(t *testing.
 	for _, needle := range []string{
 		"function analysisHeadlineText",
 		"function setAnalysisChartVisible",
-		"function updateEnergyBox",
 		"excludedAnalysisMetrics",
 	} {
 		if !strings.Contains(appJS, needle) {
@@ -230,6 +248,30 @@ func TestResultPanelsExposeReadableHighlightsInsteadOfRawMetricPlots(t *testing.
 	for _, needle := range []string{".chartHeadline{", "font-size:13px", ".analysisMuted"} {
 		if !strings.Contains(css, needle) {
 			t.Errorf("readability CSS missing %q", needle)
+		}
+	}
+}
+
+func TestTitaniumAlloyWorkflowPutsCompositionBeforeOperations(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{
+		`id="titaniumAlloyControls"`,
+		`id="baseCrystalControls"`,
+		`id="operationHint"`,
+		`id="alloyType"`,
+		`value="crystal"`,
+		`value="random"`,
+		`value="sqs"`,
+		"Ti 是基体元素",
+		"不填写/不选择操作就跳过",
+	} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("workflow markup missing %q", needle)
+		}
+	}
+	for _, obsolete := range []string{"Crystal / Alloy", "Pure phase crystal"} {
+		if strings.Contains(page, obsolete) {
+			t.Errorf("generic/non-titanium workflow wording remains %q", obsolete)
 		}
 	}
 }

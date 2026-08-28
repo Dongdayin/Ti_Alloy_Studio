@@ -1,17 +1,41 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"tialloystudio/internal/app"
 	"tialloystudio/internal/engines"
 )
 
-type api struct{ state *app.State }
+type saveFileRequest struct {
+	Format        string `json:"format"`
+	SuggestedName string `json:"suggested_name"`
+	MIME          string `json:"mime,omitempty"`
+}
+
+type nativeHooks struct {
+	saveFile   func(saveFileRequest) (path string, cancelled bool, err error)
+	openFolder func(path string) error
+}
+
+type api struct {
+	state      *app.State
+	hooks      nativeHooks
+	savedMu    sync.Mutex
+	savedFiles map[string]bool
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -23,22 +47,35 @@ func writeError(w http.ResponseWriter, status int, err error) {
 }
 
 func NewHandler(state *app.State) http.Handler {
-	a := &api{state: state}
+	return newHandlerWithNativeHooks(state, nativeHooks{})
+}
+
+func newHandlerWithNativeHooks(state *app.State, hooks nativeHooks) http.Handler {
+	if hooks.saveFile == nil {
+		hooks.saveFile = nativeSaveFile
+	}
+	if hooks.openFolder == nil {
+		hooks.openFolder = nativeOpenFolder
+	}
+	a := &api{state: state, hooks: hooks, savedFiles: map[string]bool{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/info", a.info)
 	mux.HandleFunc("/api/build", a.build)
 	mux.HandleFunc("/api/export", a.export)
+	mux.HandleFunc("/api/export/save", a.exportSave)
 	mux.HandleFunc("/api/export-batch", a.exportBatch)
 	mux.HandleFunc("/api/environment", a.environment)
 	mux.HandleFunc("/api/capabilities", a.capabilities)
 	mux.HandleFunc("/api/connectors", a.connectors)
 	mux.HandleFunc("/api/project", a.project)
+	mux.HandleFunc("/api/project/save", a.projectSave)
 	mux.HandleFunc("/api/project/export", a.projectExport)
 	mux.HandleFunc("/api/project/import", a.projectImport)
 	mux.HandleFunc("/api/project/revision", a.projectRevision)
 	mux.HandleFunc("/api/project/select", a.projectSelect)
 	mux.HandleFunc("/api/project/edit", a.projectEdit)
 	mux.HandleFunc("/api/project/derive", a.projectDerive)
+	mux.HandleFunc("/api/open-folder", a.openFolder)
 	return mux
 }
 
@@ -49,7 +86,7 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":     "Ti Alloy Studio",
-		"version":  "0.2.0-phase1-r12",
+		"version":  "0.2.0-phase1-r13",
 		"engine":   "TiModelCore Native + bundled Atomsk/ASE/spglib/pymatgen/AtomMan validation",
 		"platform": "Windows x64 standalone offline structure modeling; no WSL or local solver required",
 	})
@@ -91,6 +128,32 @@ func (a *api) export(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(content))
 }
 
+func (a *api) exportSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		RevisionID    string `json:"revision_id"`
+		Format        string `json:"format"`
+		SuggestedName string `json:"suggested_name"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	name, mime, content, err := a.state.ExportRevision(req.RevisionID, req.Format)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	suggested := strings.TrimSpace(req.SuggestedName)
+	if suggested == "" {
+		suggested = name
+	}
+	a.saveBytes(w, saveFileRequest{Format: req.Format, SuggestedName: suggested, MIME: mime}, []byte(content))
+}
+
 func (a *api) exportBatch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -105,6 +168,162 @@ func (a *api) exportBatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
+}
+
+func (a *api) projectSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name          string `json:"name"`
+		SuggestedName string `json:"suggested_name"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	data, err := a.state.ExportProjectArchive(req.Name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	suggested := strings.TrimSpace(req.SuggestedName)
+	if suggested == "" {
+		suggested = "TiAlloyStudio-project.tias-project"
+	}
+	a.saveBytes(w, saveFileRequest{Format: "tias-project", SuggestedName: suggested, MIME: "application/vnd.tialloystudio.project+zip"}, data)
+}
+
+func (a *api) openFolder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	path, key, err := normalizedSavedPath(req.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	a.savedMu.Lock()
+	allowed := a.savedFiles[key]
+	a.savedMu.Unlock()
+	if !allowed {
+		writeError(w, http.StatusForbidden, fmt.Errorf("the requested path was not created by this Ti Alloy Studio session"))
+		return
+	}
+	if err := a.hooks.openFolder(path); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("open export folder: %w", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"opened": true, "path": path})
+}
+
+func (a *api) saveBytes(w http.ResponseWriter, req saveFileRequest, data []byte) {
+	path, cancelled, err := a.hooks.saveFile(req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("choose save path: %w", err))
+		return
+	}
+	if cancelled || strings.TrimSpace(path) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"saved": false, "cancelled": true})
+		return
+	}
+	path, key, err := normalizedSavedPath(path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("write export file: %w", err))
+		return
+	}
+	sum := sha256.Sum256(data)
+	a.savedMu.Lock()
+	a.savedFiles[key] = true
+	a.savedMu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"saved":    true,
+		"path":     path,
+		"filename": filepath.Base(path),
+		"bytes":    int64(len(data)),
+		"sha256":   hex.EncodeToString(sum[:]),
+	})
+}
+
+func normalizedSavedPath(path string) (displayPath, key string, err error) {
+	if strings.TrimSpace(path) == "" {
+		return "", "", errors.New("path is required")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", "", err
+	}
+	displayPath = filepath.Clean(abs)
+	key = displayPath
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
+	}
+	return displayPath, key, nil
+}
+
+func nativeOpenFolder(path string) error {
+	if runtime.GOOS == "windows" {
+		return exec.Command("explorer.exe", "/select,"+path).Start()
+	}
+	return exec.Command("xdg-open", filepath.Dir(path)).Start()
+}
+
+func nativeSaveFile(req saveFileRequest) (string, bool, error) {
+	if runtime.GOOS != "windows" {
+		return "", false, errors.New("native save dialog is only available in the Windows desktop build")
+	}
+	script := `
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.SaveFileDialog
+$dialog.FileName = ` + psSingleQuote(req.SuggestedName) + `
+$dialog.Filter = ` + psSingleQuote(saveDialogFilter(req.Format)) + `
+if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+  [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+  Write-Output $dialog.FileName
+}
+`
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script).Output()
+	if err != nil {
+		return "", false, err
+	}
+	path := strings.TrimSpace(string(out))
+	return path, path == "", nil
+}
+
+func psSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+func saveDialogFilter(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "poscar", "vasp":
+		return "VASP POSCAR|POSCAR;*.vasp;*.poscar|All files|*.*"
+	case "xyz":
+		return "XYZ structure|*.xyz|All files|*.*"
+	case "extxyz", "gpumd":
+		return "Extended XYZ|*.extxyz;*.xyz|All files|*.*"
+	case "lammps", "data":
+		return "LAMMPS data|*.data;*.lmp|All files|*.*"
+	case "cif":
+		return "CIF structure|*.cif|All files|*.*"
+	case "tias-project":
+		return "Ti Alloy Studio project|*.tias-project|All files|*.*"
+	default:
+		return "All files|*.*"
+	}
 }
 
 func (a *api) environment(w http.ResponseWriter, r *http.Request) {
