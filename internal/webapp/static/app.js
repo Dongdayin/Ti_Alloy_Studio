@@ -23,6 +23,11 @@
       gsfe: '110_111'
     }
   };
+  const excludedAnalysisMetrics = new Set([
+    'seed',
+    'selected_index',
+    'interface_equivalence_assumed'
+  ]);
 
   let active = 'random';
   let model = null;
@@ -39,7 +44,10 @@
 	let activeRevisionID = '';
 	let pendingEditParentID = '';
 
-  const num = (id) => Number($(id).value) || 0;
+  const num = (id) => {
+    const element = $(id);
+    return element ? Number(element.value) || 0 : 0;
+  };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;',
     '<': '&lt;',
@@ -73,9 +81,10 @@
     let module = active;
     if (active === 'random') module = $('alloyType').value;
     if (active === 'vacancy') module = $('defectType').value;
+    const interfaceMode = module === 'interface';
     return {
       module,
-      phase: $('phase').value,
+      phase: interfaceMode ? 'alpha' : currentPhase(),
       nx: num('nx'),
       ny: num('ny'),
       nz: num('nz'),
@@ -96,9 +105,9 @@
       atat_run_seconds: num('atatRunSeconds'),
       site_id: num('siteId'),
       new_species: $('newSpecies').value,
-      surface_preset: $('surfacePreset').value,
+      surface_preset: interfaceMode ? ($('interfaceTopology')?.value || 'interface_periodic_bicrystal') : $('surfacePreset').value,
       vacuum: module === 'interface' ? num('interfaceVacuum') : num('vacuum'),
-      interface_max_repeat: num('interfaceMax'),
+      interface_max_repeat: num('interfaceMatchLimit'),
       interface_candidate: num('interfaceCandidate'),
       interface_distance: num('interfaceDistance'),
       eos_ratios: numberList('eosRatios'),
@@ -129,10 +138,24 @@
     if (!currentAllowed) select.value = fallback || firstAllowed;
   }
 
+  function setSinglePhaseControlsVisible(visible) {
+    const phaseControl = $('phaseControl');
+    if (phaseControl) phaseControl.hidden = !visible;
+    const phaseHint = $('phaseHint');
+    if (phaseHint) phaseHint.hidden = !visible;
+  }
+
+  function updateInterfaceTopologyControls() {
+    const topology = $('interfaceTopology')?.value || 'interface_periodic_bicrystal';
+    const vacuumLabel = $('interfaceVacuumLabel');
+    if (vacuumLabel) vacuumLabel.hidden = topology !== 'interface_single_slab';
+  }
+
   function updatePhaseControls() {
     const phase = currentPhase();
     const meta = phaseMetadata[phase] || phaseMetadata.alpha;
     const showBothLattices = active === 'interface';
+    setSinglePhaseControlsVisible(active !== 'interface');
     document.querySelectorAll('[data-phase-field]').forEach((field) => {
       field.hidden = !showBothLattices && field.dataset.phaseField !== phase;
     });
@@ -142,8 +165,11 @@
         : meta.hint;
     }
     if ($('latticeSummary')) $('latticeSummary').textContent = showBothLattices ? 'Lattice · α and β' : meta.lattice;
-    syncPhaseOptions('surfacePreset', phase, meta.surface);
-    syncPhaseOptions('gsfePreset', phase, meta.gsfe);
+    if (active !== 'interface') {
+      syncPhaseOptions('surfacePreset', phase, meta.surface);
+      syncPhaseOptions('gsfePreset', phase, meta.gsfe);
+    }
+    updateInterfaceTopologyControls();
   }
 
   function setModule(module) {
@@ -204,6 +230,44 @@
     return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
       - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
       + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  }
+
+  function currentRenderMode() {
+    return $('renderMode')?.value || 'element';
+  }
+
+  function mixColor(hex, target, ratio) {
+    const clean = String(hex || '').replace('#', '');
+    if (clean.length !== 6) return hex || '#708090';
+    const a = [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
+    const b = [0, 2, 4].map((i) => parseInt(target.replace('#', '').slice(i, i + 2), 16));
+    const out = a.map((v, i) => Math.round(v + (b[i] - v) * Math.max(0, Math.min(1, ratio))));
+    return '#' + out.map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+
+  function currentAtomColor(index, z, zMin, zMax) {
+    const species = model?.structure?.species?.[index] || '';
+    const label = model?.structure?.site_labels?.[index] || '';
+    const mode = currentRenderMode();
+    const key = mode === 'phase' && label ? label : species;
+    let base = colors[key] || colors[species] || '#708090';
+    if (mode === 'depth') {
+      const span = Math.max(1e-9, zMax - zMin);
+      const t = (z - zMin) / span;
+      base = t > 0.5 ? mixColor(base, '#ffffff', (t - 0.5) * 0.55) : mixColor(base, '#17202a', (0.5 - t) * 0.35);
+    }
+    return base;
+  }
+
+  function bindColorControl(inputId, key) {
+    const input = $(inputId);
+    if (!input) return;
+    input.value = colors[key] || input.value;
+    input.addEventListener('input', () => {
+      colors[key] = input.value;
+      draw3d();
+      if (model) charts();
+    });
   }
 
   function modelInfo() {
@@ -276,19 +340,21 @@
         radius: Math.max(2, radius * perspective)
       };
     }).sort((a, b) => a.z - b.z);
+    const zMin = Math.min(...cv._pts.map((p) => p.z));
+    const zMax = Math.max(...cv._pts.map((p) => p.z));
 
     for (const p of cv._pts) {
-      const element = (model.structure.site_labels || [])[p.i] || model.structure.species[p.i];
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.i === selected ? p.radius + 2 : p.radius, 0, Math.PI * 2);
-      ctx.fillStyle = colors[element] || '#708090';
+      ctx.fillStyle = currentAtomColor(p.i, p.z, zMin, zMax);
       ctx.fill();
       ctx.strokeStyle = p.i === selected ? '#111' : '#fff';
       ctx.lineWidth = p.i === selected ? 1.5 : 1;
       ctx.stroke();
     }
 
-    const labels = model.structure.site_labels?.length
+    const phaseMode = currentRenderMode() === 'phase' && model.structure.site_labels?.length;
+    const labels = phaseMode
       ? model.structure.site_labels
       : model.structure.species;
     const elements = [...new Set(labels)];
@@ -426,7 +492,7 @@
     ctx.lineTo(box.right, box.bottom);
     ctx.stroke();
     ctx.fillStyle = '#637184';
-    ctx.font = '10px Segoe UI, Arial, sans-serif';
+    ctx.font = '11px Segoe UI, Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(xLabel, (box.left + box.right) / 2, h - 3);
     ctx.save();
@@ -461,7 +527,7 @@
       ctx.fillStyle = colors[p.label] || '#4f78ba';
       ctx.fillRect(x - barWidth / 2, top, barWidth, box.bottom - top);
       ctx.fillStyle = '#536174';
-      ctx.font = '10px Segoe UI, Arial, sans-serif';
+      ctx.font = '11px Segoe UI, Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(p.label, x, box.bottom + 12);
       canvas._chartPoints.push({
@@ -548,6 +614,70 @@
     canvas.addEventListener('pointerleave', () => { tooltip.style.display = 'none'; });
   }
 
+  function formatValue(value, digits = 4) {
+    return Number.isFinite(Number(value)) ? Number(value).toFixed(digits).replace(/\.?0+$/, '') : '—';
+  }
+
+  function compositionHeadlineText(rows, total) {
+    const parts = rows.map(([element, count, at]) => `${element} ${Number(at).toFixed(2)}%`);
+    return `${total} atoms · ${parts.join(' · ')}`;
+  }
+
+  function topologyLabel(value) {
+    if (value === 'single_interface_slab') return 'single-interface slab';
+    if (value === 'periodic_bicrystal') return 'periodic bicrystal';
+    return value || 'interface';
+  }
+
+  function analysisHeadlineText() {
+    const analysis = model.analysis || {};
+    const series = model.series || {};
+    const atoms = model.structure?.species?.length || 0;
+    if (model.module === 'random') {
+      return `Random alloy built · ${atoms} atoms · composition resolution ${formatValue(analysis.composition_resolution_at_percent, 3)} at.%`;
+    }
+    if (model.module === 'crystal') {
+      return `Pure crystal built · ${atoms} atoms · ready for inspection and export`;
+    }
+    if (model.module === 'sqs') {
+      return `Built-in SQS · objective ${formatValue(analysis.objective, 6)} · pair error ${formatValue(analysis.max_abs_pair_error, 6)}`;
+    }
+    if (model.module === 'surface') {
+      return `Surface slab · ${analysis.plane || 'selected plane'} · vacuum ${formatValue(analysis.vacuum_angstrom, 2)} Å`;
+    }
+    if (model.module === 'interface') {
+      const candidate = analysis.candidate || {};
+      return `Burgers α/β interface · ${topologyLabel(analysis.interface_topology)} · max imposed strain ${formatValue(candidate.max_imposed_strain_percent, 3)}%`;
+    }
+    if (model.module === 'eos') {
+      return `EOS structure series · ${(series.volume_ratios || []).length} volume points · no energy fit until energies are supplied`;
+    }
+    if (model.module === 'gsfe') {
+      return `GSFE geometry series · ${(series.lambda || []).length} displacement points · geometry only until energies are supplied`;
+    }
+    return `${atoms} atoms · key geometry values are listed below`;
+  }
+
+  function setAnalysisChartVisible(show) {
+    const wrap = $('analysisCanvas')?.closest('.chartWrap');
+    if (wrap) wrap.hidden = !show;
+    if (!show) {
+      const cv = $('analysisCanvas');
+      const ctx = cv?.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, cv.width, cv.height);
+      $('analysisTitle').textContent = 'Key values';
+      $('analysisHeadline').classList.add('analysisMuted');
+    } else {
+      $('analysisHeadline').classList.remove('analysisMuted');
+    }
+  }
+
+  function updateEnergyBox() {
+    const box = $('energyBox');
+    if (!box) return;
+    box.hidden = !(model && (model.module === 'eos' || model.module === 'gsfe'));
+  }
+
   function analysisPlotData() {
     const series = model.series || {};
     const analysis = model.analysis || {};
@@ -627,10 +757,9 @@
         yLabel: 'Preview objective'
       };
     }
-    const numeric = Object.entries(analysis).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
     return {
-      points: numeric.map(([k, v], i) => ({ x: i, y: Number(v), index: i, label: k })),
-      xLabel: 'Metric index',
+      points: [],
+      xLabel: 'Metric',
       yLabel: 'Value'
     };
   }
@@ -640,16 +769,18 @@
     model.structure.species.forEach((e) => { counts[e] = (counts[e] || 0) + 1; });
     const total = model.structure.species.length || 1;
     const compositionRows = Object.entries(counts).map(([e, n]) => [e, n, (100 * n / total).toFixed(5)]);
+    $('compositionHeadline').textContent = compositionHeadlineText(compositionRows, total);
     $('compositionTable').innerHTML = table([['Element', 'Count', 'at.%'], ...compositionRows]);
     chartData.composition = compositionRows.map(([e, , at]) => ({ label: e, y: Number(at) }));
     drawBarChart($('compositionCanvas'), chartData.composition, 'Element', 'at.%', 'compositionTooltip');
 
     const analysis = model.analysis || {};
     const series = model.series || {};
+    $('analysisHeadline').textContent = analysisHeadlineText();
     let rows = [
       ['Metric', 'Value'],
       ...Object.entries(analysis)
-        .filter((x) => typeof x[1] !== 'object')
+        .filter((x) => typeof x[1] !== 'object' && !excludedAnalysisMetrics.has(x[0]))
         .map(([k, v]) => [k, typeof v === 'number' ? v.toPrecision(8) : v])
     ];
     if (model.module === 'eos') {
@@ -686,8 +817,12 @@
 
     const plot = analysisPlotData();
     chartData.analysis = plot.points;
-    $('analysisTitle').textContent = `${plot.xLabel} / ${plot.yLabel}`;
-    drawLineChart($('analysisCanvas'), plot.points, plot.xLabel, plot.yLabel, 'chartTooltip');
+    const showPlot = plot.points.length > 1;
+    setAnalysisChartVisible(showPlot);
+    if (showPlot) {
+      $('analysisTitle').textContent = `${plot.xLabel} / ${plot.yLabel}`;
+      drawLineChart($('analysisCanvas'), plot.points, plot.xLabel, plot.yLabel, 'chartTooltip');
+    }
   }
 
   function applyEnergies() {
@@ -717,6 +852,7 @@
     engines();
     draw3d();
     charts();
+    updateEnergyBox();
     $('eosBatchBtn').disabled = model.module !== 'eos';
     $('gsfeBatchBtn').disabled = model.module !== 'gsfe';
   }
@@ -832,7 +968,13 @@
     $('projectionBtn').textContent = orthographic ? 'Orthographic' : 'Perspective';
     draw3d();
   };
+  $('renderMode').onchange = draw3d;
   $('atomRadius').oninput = draw3d;
+  bindColorControl('colorTi', 'Ti');
+  bindColorControl('colorAl', 'Al');
+  bindColorControl('colorV', 'V');
+  bindColorControl('colorAlpha', 'alpha');
+  bindColorControl('colorBeta', 'beta');
 
   setup3dInteraction();
   bindChartTooltip('compositionCanvas', 'compositionTooltip');
@@ -840,6 +982,7 @@
 
   document.querySelectorAll('.nav').forEach((b) => { b.onclick = () => setModule(b.dataset.module); });
   $('phase').addEventListener('change', updatePhaseControls);
+  $('interfaceTopology')?.addEventListener('change', updateInterfaceTopologyControls);
   $('buildBtn').onclick = build;
   document.querySelectorAll('[data-export]').forEach((b) => {
     b.onclick = () => model

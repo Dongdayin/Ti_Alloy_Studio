@@ -140,3 +140,96 @@ func TestPhaseSelectionRefreshesPhaseSpecificControls(t *testing.T) {
 		t.Error("hidden phase-specific controls must stay hidden even when label display rules apply")
 	}
 }
+
+func TestInterfaceRecipeUsesAlphaBetaSpecificControls(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{
+		`id="phaseControl"`,
+		`id="interfaceOrientationPreset"`,
+		`id="interfaceTopology"`,
+		`id="interfaceMatchLimit"`,
+		`id="interfaceVacuumLabel"`,
+		`α (0001) ∥ β (110)`,
+		`α [11-20] ∥ β [1-11]`,
+	} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("interface controls missing %q", needle)
+		}
+	}
+
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"function setSinglePhaseControlsVisible",
+		"active !== 'interface'",
+		"interfaceTopology",
+		"interfaceVacuumLabel",
+	} {
+		if !strings.Contains(appJS, needle) {
+			t.Errorf("interface behavior missing %q", needle)
+		}
+	}
+}
+
+func TestStructureViewerHasRenderModesAndAtomColorControls(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{
+		`id="renderMode"`,
+		`value="element"`,
+		`value="phase"`,
+		`value="depth"`,
+		`id="colorTi"`,
+		`id="colorAl"`,
+		`id="colorV"`,
+		`id="colorAlpha"`,
+		`id="colorBeta"`,
+	} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("3D viewer control missing %q", needle)
+		}
+	}
+
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"function currentAtomColor",
+		"function bindColorControl",
+		"$('renderMode').onchange",
+		"bindColorControl('colorTi', 'Ti')",
+		"bindColorControl('colorAlpha', 'alpha')",
+	} {
+		if !strings.Contains(appJS, needle) {
+			t.Errorf("3D viewer behavior missing %q", needle)
+		}
+	}
+}
+
+func TestResultPanelsExposeReadableHighlightsInsteadOfRawMetricPlots(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{
+		`id="compositionHeadline"`,
+		`id="analysisHeadline"`,
+		`id="energyBox"`,
+	} {
+		if !strings.Contains(page, needle) {
+			t.Errorf("result highlight markup missing %q", needle)
+		}
+	}
+
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"function analysisHeadlineText",
+		"function setAnalysisChartVisible",
+		"function updateEnergyBox",
+		"excludedAnalysisMetrics",
+	} {
+		if !strings.Contains(appJS, needle) {
+			t.Errorf("readable result behavior missing %q", needle)
+		}
+	}
+
+	css := strings.Join(strings.Fields(servedAsset(t, "/style.css")), "")
+	for _, needle := range []string{".chartHeadline{", "font-size:13px", ".analysisMuted"} {
+		if !strings.Contains(css, needle) {
+			t.Errorf("readability CSS missing %q", needle)
+		}
+	}
+}

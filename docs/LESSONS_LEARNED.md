@@ -1,5 +1,19 @@
 # Lessons learned
 
+## User-facing modeling controls must expose real controllable semantics
+
+- Trigger: the α/β interface recipe still showed the single-phase Phase selector, while interface placement and side orientations were described through low-level candidate/repeat fields.
+- Root cause: single-phase and two-phase recipes shared the same visible controls, and the UI exposed internal matching indexes without first explaining the fixed Burgers orientation relation and topology choice.
+- Fix: hide the Phase selector for α/β interface recipes, show the supported Burgers orientation relation explicitly, make topology/interface placement a first-class control, and rename repeat/candidate fields as search/matching controls.
+- Regression gate: the web asset test requires the dedicated interface orientation, topology, match-limit and vacuum controls, and requires the phase selector to be hideable for interface mode.
+
+## Result panels should not plot unrelated raw numbers as a scientific trend
+
+- Trigger: random-alloy results plotted internal numeric fields such as the random seed together with composition-error metrics, producing a visually dominant but meaningless line.
+- Root cause: the charting fallback treated every numeric analysis value as one series regardless of scientific meaning.
+- Fix: put the key interpretation in a readable headline, keep raw values in the table, and show a chart only for real ordered series such as interface candidates, SQS convergence, EOS points, or GSFE displacements.
+- Regression gate: the web asset test requires result headlines, hidden-by-default energy input, and explicit filtering of non-plot analysis metrics.
+
 ## Phase selection must update visible recipe controls immediately
 
 - Trigger: changing the Phase dropdown did not change the lattice, surface, or GSFE parameters shown below it.

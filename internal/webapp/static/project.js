@@ -41,15 +41,22 @@
     if (module === 'vacancy' || module === 'substitution' || module === 'surface') navModule = 'vacancy';
     q(`.nav[data-module="${navModule}"]`)?.click();
     setText('phase', req.phase || 'alpha');
-    for (const [id, key] of [['nx','nx'],['ny','ny'],['nz','nz'],['targetX','target_x'],['targetY','target_y'],['targetZ','target_z'],['aAlpha','a_alpha'],['cAlpha','c_alpha'],['aBeta','a_beta'],['seed','seed'],['sqsSteps','sqs_steps'],['sqsShells','sqs_shells'],['siteId','site_id'],['vacuum','vacuum'],['interfaceMax','interface_max_repeat'],['interfaceCandidate','interface_candidate'],['interfaceDistance','interface_distance'],['eosIndex','eos_index'],['gsfeSteps','gsfe_steps'],['gsfeIndex','gsfe_index']]) setNumber(id, req[key]);
+    for (const [id, key] of [['nx','nx'],['ny','ny'],['nz','nz'],['targetX','target_x'],['targetY','target_y'],['targetZ','target_z'],['aAlpha','a_alpha'],['cAlpha','c_alpha'],['aBeta','a_beta'],['seed','seed'],['sqsSteps','sqs_steps'],['sqsShells','sqs_shells'],['siteId','site_id'],['vacuum','vacuum'],['interfaceMatchLimit','interface_max_repeat'],['interfaceCandidate','interface_candidate'],['interfaceDistance','interface_distance'],['eosIndex','eos_index'],['gsfeSteps','gsfe_steps'],['gsfeIndex','gsfe_index']]) setNumber(id, req[key]);
     if ($('composition') && req.composition_wt) $('composition').value = Object.entries(req.composition_wt).filter(([element]) => element !== 'Ti').map(([element,value]) => `${element}=${value}`).join(',');
     if ($('alloyType') && ['random','crystal'].includes(module)) $('alloyType').value = module;
     if ($('defectType') && ['vacancy','substitution','surface'].includes(module)) $('defectType').value = module;
-    setText('newSpecies', req.new_species); setText('surfacePreset', req.surface_preset); setText('sqsBackend', req.sqs_backend || 'native'); setText('atatDistro', req.atat_distro || '');
+    setText('newSpecies', req.new_species);
+    if (module === 'interface') {
+      const topology = ['interface_periodic_bicrystal','interface_single_slab'].includes(req.surface_preset) ? req.surface_preset : 'interface_periodic_bicrystal';
+      setText('interfaceTopology', topology);
+    }
+    else setText('surfacePreset', req.surface_preset);
+    setText('sqsBackend', req.sqs_backend || 'native'); setText('atatDistro', req.atat_distro || '');
     setNumber('atatPairCutoff', req.atat_pair_cutoff_angstrom); setNumber('atatTripletCutoff', req.atat_triplet_cutoff_angstrom); setNumber('atatRunSeconds', req.atat_run_seconds);
     if ($('eosRatios') && Array.isArray(req.eos_ratios)) $('eosRatios').value = req.eos_ratios.join(',');
     setText('gsfePreset', req.gsfe_preset);
     $('phase')?.dispatchEvent(new Event('change', {bubbles:true}));
+    $('interfaceTopology')?.dispatchEvent(new Event('change', {bubbles:true}));
   }
 
   function compositionSummary(record) {

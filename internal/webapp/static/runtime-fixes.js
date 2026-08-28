@@ -5,8 +5,8 @@
   // Use the already-defined surface_preset request field as a backward-compatible
   // transport field for interface-only requests; the app core ignores it elsewhere.
   const interfaceControls = document.getElementById('interfaceControls');
-  let interfaceTopology = null;
-  if (interfaceControls) {
+  let interfaceTopology = document.getElementById('interfaceTopology');
+  if (interfaceControls && !interfaceTopology) {
     const label = document.createElement('label');
     label.textContent = 'Interface topology';
     interfaceTopology = document.createElement('select');
@@ -22,10 +22,12 @@
     note.textContent = 'Periodic bicrystal contains two α/β interfaces and no free surface. Single-interface slab contains one α/β interface plus two vacuum surfaces. Do not mix their energies.';
     label.insertAdjacentElement('afterend', note);
 
+  }
+  if (interfaceTopology) {
     const vacuum = document.getElementById('interfaceVacuum');
-    const vacuumLabel = vacuum && vacuum.closest('label');
+    const vacuumLabel = document.getElementById('interfaceVacuumLabel') || (vacuum && vacuum.closest('label'));
     const syncTopologyUI = () => {
-      if (vacuumLabel) vacuumLabel.style.display = interfaceTopology.value === 'interface_single_slab' ? '' : 'none';
+      if (vacuumLabel) vacuumLabel.hidden = interfaceTopology.value !== 'interface_single_slab';
     };
     interfaceTopology.addEventListener('change', syncTopologyUI);
     syncTopologyUI();

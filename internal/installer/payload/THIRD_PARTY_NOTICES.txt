@@ -1,4 +1,4 @@
-Ti Alloy Studio Phase 1 R11 Offline - bundled scientific engines
+Ti Alloy Studio Phase 1 R12 Offline - bundled scientific engines
 
 R3 Offline is designed so the end user's installation requires no internet access and does not modify system Python, Conda, or PATH. The release installer carries an engine-bundle.zip containing a prebuilt application-local Python runtime and the private Atomsk executable. Python packages are resolved and installed into that runtime only on the release builder; the end-user installer invokes neither the system Python installer nor pip.
 

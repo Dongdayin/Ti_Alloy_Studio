@@ -39,7 +39,7 @@
     </nav>
 
     <section class="form" id="controls">
-      <label>Phase
+      <label id="phaseControl">Phase
         <select id="phase">
           <option value="alpha">α-Ti · HCP</option>
           <option value="beta">β-Ti · BCC</option>
@@ -145,16 +145,38 @@
       </div>
 
       <div id="interfaceControls" class="conditional">
+        <div class="interfaceIntro">
+          <strong>α + β interface</strong>
+          <span>This recipe always builds a two-phase α/β interface. No single-phase selector is needed here.</span>
+        </div>
+        <details open>
+          <summary>Interface orientation</summary>
+          <label>Orientation relation
+            <select id="interfaceOrientationPreset">
+              <option value="burgers">Burgers OR · α (0001) ∥ β (110), α [11-20] ∥ β [1-11]</option>
+            </select>
+          </label>
+          <div class="orientationReadout" id="interfacePlaneNote">
+            <div><span>Interface plane</span><strong>α (0001) ∥ β (110)</strong></div>
+            <div><span>In-plane direction</span><strong>α [11-20] ∥ β [1-11]</strong></div>
+          </div>
+          <p class="micro">Phase 1 exposes the validated Burgers orientation relation. Arbitrary Miller-index orientation is a separate modeling algorithm, not a front-end-only switch.</p>
+        </details>
+        <label>Cell topology / interface position
+          <select id="interfaceTopology">
+            <option value="interface_periodic_bicrystal">Periodic bicrystal · two α/β interfaces, no vacuum</option>
+            <option value="interface_single_slab">Single-interface slab · one α/β interface plus vacuum surfaces</option>
+          </select>
+        </label>
         <div class="double">
-          <label>Max repeat<input id="interfaceMax" type="number" value="8" min="1" max="32"></label>
-          <label>Candidate index<input id="interfaceCandidate" type="number" value="0" min="0"></label>
+          <label>Search up to this repeat<input id="interfaceMatchLimit" type="number" value="8" min="1" max="32"></label>
+          <label>Matching option<input id="interfaceCandidate" type="number" value="0" min="0"></label>
         </div>
         <p class="micro">
-          Coherent matching shares in-plane strain between α and β. Raw lattice mismatch and imposed prestrain are
-          reported separately as geometric screening quantities; relaxed energy/stress and size convergence remain required.
+          Matching option 0 is the lowest imposed-strain candidate found in the search. Increase it only when you want to inspect alternate α/β repeat combinations.
         </p>
-        <label>Interface distance Å<input id="interfaceDistance" type="number" value="2.5" step="0.1"></label>
-        <label>Vacuum Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label>
+        <label>Initial α–β gap Å<input id="interfaceDistance" type="number" value="2.5" step="0.1"></label>
+        <label id="interfaceVacuumLabel">Vacuum Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label>
       </div>
 
       <div id="eosControls" class="conditional">
@@ -193,19 +215,37 @@
         <button data-view="xz" type="button">XZ</button>
         <button data-view="yz" type="button">YZ</button>
         <button id="projectionBtn" type="button">Orthographic</button>
+        <label class="renderControl">Render
+          <select id="renderMode">
+            <option value="element">Element colors</option>
+            <option value="phase">α/β phase colors</option>
+            <option value="depth">Depth shaded</option>
+          </select>
+        </label>
         <label class="radiusControl">Atom size<input id="atomRadius" type="range" min="2" max="10" value="5" step="0.5"></label>
       </div>
+      <details class="viewerColors">
+        <summary>Atom colors</summary>
+        <div class="colorGrid">
+          <label>Ti<input id="colorTi" type="color" value="#8193a6"></label>
+          <label>Al<input id="colorAl" type="color" value="#d49b35"></label>
+          <label>V<input id="colorV" type="color" value="#4f78ba"></label>
+          <label>α region<input id="colorAlpha" type="color" value="#477fa8"></label>
+          <label>β region<input id="colorBeta" type="color" value="#d48643"></label>
+        </div>
+      </details>
       <div class="canvasWrap">
         <canvas id="structureCanvas" width="1000" height="600" aria-label="Interactive 3D atomic structure"></canvas>
         <div id="atomTooltip" class="tooltip"></div>
       </div>
-      <p class="hint">Drag: rotate · Shift+drag: pan · Wheel: zoom · Click atom: pin details. Orthographic is the default scientific inspection view.</p>
+      <p class="hint">Drag: rotate · Shift+drag: pan · Wheel: zoom · Click atom: pin details. Use Render to switch element, phase-region, or depth-shaded view.</p>
       <div id="atomSelection" class="selectionBar">No atom selected</div>
     </div>
 
     <div class="lowerGrid">
       <div class="panel chartPanel">
-        <div class="panelHead"><h2>Composition</h2><span>hover for exact values</span></div>
+        <div class="panelHead"><h2>Composition</h2><span>Atomic percent</span></div>
+        <div id="compositionHeadline" class="chartHeadline">Generate a structure to see composition.</div>
         <div class="chartWrap">
           <canvas id="compositionCanvas" width="700" height="300"></canvas>
           <div id="compositionTooltip" class="tooltip chartTooltip"></div>
@@ -214,13 +254,14 @@
       </div>
 
       <div class="panel chartPanel">
-        <div class="panelHead"><h2>Analysis</h2><span id="analysisTitle">Model metrics</span></div>
+        <div class="panelHead"><h2>Key geometry</h2><span id="analysisTitle">Model metrics</span></div>
+        <div id="analysisHeadline" class="chartHeadline">Generate a structure to see key values.</div>
         <div class="chartWrap">
           <canvas id="analysisCanvas" width="700" height="300"></canvas>
           <div id="chartTooltip" class="tooltip chartTooltip"></div>
         </div>
         <div id="analysisTable" class="dataTable"></div>
-        <div class="energyBox">
+        <div id="energyBox" class="energyBox" hidden>
           <label>Calculated total energies (eV), optional
             <textarea id="energies" rows="2" placeholder="Paste values to plot E(V) or calculate GSFE"></textarea>
           </label>
