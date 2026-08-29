@@ -9,11 +9,12 @@ import (
 )
 
 type SmokeResult struct {
-	Status     string         `json:"status"`
-	Atoms      int            `json:"atoms"`
-	Counts     map[string]int `json:"counts"`
-	GSFEPoints int            `json:"gsfe_points"`
-	Checks     []string       `json:"checks"`
+	Status       string         `json:"status"`
+	Atoms        int            `json:"atoms"`
+	Counts       map[string]int `json:"counts"`
+	SeriesPoints int            `json:"series_points"`
+	Phase2Models int            `json:"phase2_models"`
+	Checks       []string       `json:"checks"`
 }
 
 func ScientificSmoke() (SmokeResult, error) {
@@ -45,17 +46,35 @@ func ScientificSmoke() (SmokeResult, error) {
 	}
 	out.Checks = append(out.Checks, "bundled SQS pair/triplet probability quality")
 
-	g, err := st.Build(app.BuildRequest{Module: "gsfe", Phase: "alpha", GSFEPreset: "basal_a", NX: 2, NY: 2, NZ: 6, GSFESteps: 10})
+	g, err := st.Build(app.BuildRequest{Module: "stacking_fault", Phase: "alpha", GSFEPreset: "alpha_basal_a", NX: 2, NY: 2, NZ: 6, SeriesCount: 4})
 	if err != nil {
 		return out, err
 	}
 	lam, ok := g.Series["lambda"].([]float64)
 	if !ok {
 		out.Status = "FAIL"
-		return out, fmt.Errorf("GSFE lambda series missing")
+		return out, fmt.Errorf("stacking-fault geometry lambda series missing")
 	}
-	out.GSFEPoints = len(lam)
-	out.Checks = append(out.Checks, "alpha-Ti basal GSFE geometry")
+	out.SeriesPoints = len(lam)
+	out.Checks = append(out.Checks, "alpha-Ti basal stacking-fault geometry series")
+
+	phase2Checks := []app.BuildRequest{
+		{Module: "dislocation", Phase: "alpha", NX: 4, NY: 4, NZ: 4, SlipSystem: "alpha_basal_a"},
+		{Module: "grain_boundary", Phase: "beta", NX: 4, NY: 4, NZ: 4, GBAngleDeg: 10, GBAxis: "[001]"},
+		{Module: "local_chemistry", Phase: "alpha", NX: 4, NY: 4, NZ: 4, ClusterSpec: "Al:4:center"},
+	}
+	for _, req := range phase2Checks {
+		phase2, e := st.Build(req)
+		if e != nil {
+			return out, fmt.Errorf("phase 2 %s smoke: %w", req.Module, e)
+		}
+		if phase2.Structure.Meta["scientific_state"] != "not_relaxed" || phase2.Structure.Meta["calculation_state"] != "not_calculated" {
+			out.Status = "FAIL"
+			return out, fmt.Errorf("phase 2 %s smoke lost geometry-only state", req.Module)
+		}
+		out.Phase2Models++
+	}
+	out.Checks = append(out.Checks, "Phase 2 dislocation/grain-boundary/local-chemistry geometry")
 
 	i, err := st.Build(app.BuildRequest{Module: "interface", InterfaceMaxRepeat: 6, InterfaceDistance: 2.5, Vacuum: 10, NZ: 2})
 	if err != nil {

@@ -75,11 +75,40 @@
     return ($(id)?.value || '').split(/[;,\s]+/).map(Number).filter(Number.isFinite);
   }
 
+  function phase2ModuleKind(module = active) {
+    return ({
+      dislocation: 'dislocation',
+      grain_boundary: 'grain_boundary',
+      stacking_fault: 'stacking_fault',
+      twin: 'twin',
+      local_chemistry: 'local_chemistry',
+      crack: 'crack',
+      nanoindentation: 'nanoindentation',
+      polycrystal: 'polycrystal',
+      neb: 'neb',
+      training_set: 'training_set'
+    })[module] || '';
+  }
+
+  function operationKindValue() {
+    const parts = [];
+    if ($('dislocationCoreRadius')) parts.push(`core_radius=${num('dislocationCoreRadius')}`);
+    if ($('twinShear')) parts.push(`shear=${num('twinShear')}`);
+    return parts.join(';');
+  }
+
+  function seriesCountValue(module) {
+    if (module === 'neb') return num('nebImages');
+    if (module === 'training_set') return num('datasetCount');
+    return num('seriesCount') || 4;
+  }
+
   function requestPayload() {
     let module = active;
     if (active === 'random') module = $('alloyType').value;
     if (active === 'vacancy') module = $('defectType').value;
     const interfaceMode = module === 'interface';
+    const phase2Kind = phase2ModuleKind(module);
     const alloyMode = $('alloyType')?.value || 'crystal';
     return {
       module,
@@ -103,13 +132,35 @@
       atat_pair_cutoff_angstrom: num('atatPairCutoff'),
       atat_triplet_cutoff_angstrom: num('atatTripletCutoff'),
       atat_run_seconds: num('atatRunSeconds'),
-      site_id: num('siteId'),
+      site_id: module === 'neb' ? num('nebSiteId') : num('siteId'),
       new_species: $('newSpecies')?.value || 'Al',
-      surface_preset: interfaceMode ? ($('interfaceTopology')?.value || 'interface_periodic_bicrystal') : $('surfacePreset').value,
+      surface_preset: module === 'grain_boundary'
+        ? ($('gbTopology')?.value || 'periodic')
+        : (interfaceMode ? ($('interfaceTopology')?.value || 'interface_periodic_bicrystal') : $('surfacePreset').value),
       vacuum: module === 'interface' ? num('interfaceVacuum') : num('vacuum'),
       interface_max_repeat: num('interfaceMatchLimit'),
       interface_candidate: num('interfaceCandidate'),
-      interface_distance: num('interfaceDistance')
+      interface_distance: num('interfaceDistance'),
+      operation_kind: phase2Kind ? operationKindValue() : '',
+      orientation_preset: $('interfaceOrientationPreset')?.value || '',
+      slip_system: $('slipSystem')?.value || '',
+      burgers_vector: $('burgersVector')?.value || '',
+      line_direction: $('dislocationCharacter')?.value || '',
+      dislocation_character: $('dislocationCharacter')?.value || '',
+      dislocation_arrangement: $('dislocationArrangement')?.value || '',
+      gb_type: $('gbType')?.value || '',
+      gb_axis: $('gbAxis')?.value || '',
+      gb_normal: $('gbNormal')?.value || '',
+      gb_angle_deg: num('gbAngleDeg'),
+      overlap_cutoff_angstrom: num('overlapCutoff'),
+      twin_system: $('twinSystem')?.value || '',
+      cluster_spec: $('clusterSpec')?.value || '',
+      precipitate_spec: $('precipitateSpec')?.value || '',
+      crack_spec: $('crackSpec')?.value || '',
+      indenter_spec: $('indenterSpec')?.value || '',
+      grain_count: num('grainCount'),
+      series_count: seriesCountValue(module),
+      dataset_kind: $('datasetKind')?.value || ''
     };
   }
 
@@ -163,6 +214,8 @@
     if (active !== 'interface') {
       syncPhaseOptions('surfacePreset', phase, meta.surface);
     }
+    syncPhaseOptions('slipSystem', phase, phase === 'beta' ? 'beta_110_111' : 'alpha_basal_a');
+    syncPhaseOptions('gsfePreset', phase, phase === 'beta' ? 'beta_110_111' : 'alpha_basal_a');
     updateInterfaceTopologyControls();
   }
 
@@ -177,15 +230,39 @@
   function setModule(module) {
     active = module;
     document.querySelectorAll('.nav').forEach((b) => b.classList.toggle('active', b.dataset.module === module));
-    ['defectControls', 'surfaceControls', 'interfaceControls']
+    [
+      'defectControls',
+      'surfaceControls',
+      'interfaceControls',
+      'dislocationControls',
+      'grainBoundaryControls',
+      'faultControls',
+      'twinControls',
+      'localChemistryControls',
+      'crackControls',
+      'indentControls',
+      'polycrystalControls',
+      'nebControls',
+      'datasetControls'
+    ]
       .forEach((id) => { if ($(id)) $(id).style.display = 'none'; });
     if (module === 'vacancy') $('defectControls').style.display = 'block';
     if (module === 'surface') $('surfaceControls').style.display = 'block';
     if (module === 'interface') $('interfaceControls').style.display = 'block';
+    if (module === 'dislocation') $('dislocationControls').style.display = 'block';
+    if (module === 'grain_boundary') $('grainBoundaryControls').style.display = 'block';
+    if (module === 'stacking_fault') $('faultControls').style.display = 'block';
+    if (module === 'twin') $('twinControls').style.display = 'block';
+    if (module === 'local_chemistry') $('localChemistryControls').style.display = 'block';
+    if (module === 'crack') $('crackControls').style.display = 'block';
+    if (module === 'nanoindentation') $('indentControls').style.display = 'block';
+    if (module === 'polycrystal') $('polycrystalControls').style.display = 'block';
+    if (module === 'neb') $('nebControls').style.display = 'block';
+    if (module === 'training_set') $('datasetControls').style.display = 'block';
     if ($('operationHint')) {
       $('operationHint').textContent = module === 'random'
         ? '先生成基础模型；需要缺陷、表面或 α/β 界面时再进入对应页设置参数。不填写/不选择操作就跳过。'
-        : '当前操作会基于上方设定的 Ti 合金成分、晶体结构、晶格常数和超胞生成。';
+        : '当前操作会基于上方设定的 Ti 合金成分、晶体结构、晶格常数和超胞生成；未输入的高级参数按默认预设处理。';
     }
     updateAlloyControls();
     updatePhaseControls();
@@ -376,7 +453,21 @@
       vacancy: '缺陷模型',
       substitution: '替换原子模型',
       surface: '表面模型',
-      interface: 'α/β 界面模型'
+      interface: 'α/β 界面模型',
+      dislocation: '位错模型',
+      grain_boundary: '晶界模型',
+      stacking_fault: '层错 / γ-surface 构型',
+      gamma_surface: 'γ-surface 构型',
+      twin: '孪晶模型',
+      local_chemistry: '局域化学模型',
+      sro: 'SRO 初始模型',
+      cluster: '团簇模型',
+      precipitate: '析出相夹杂模型',
+      crack: '裂纹初始模型',
+      nanoindentation: '纳米压痕初始模型',
+      polycrystal: '多晶模型',
+      neb: 'NEB 初末态构型',
+      training_set: '训练构型集'
     })[module] || 'Ti 合金模型';
   }
 
@@ -794,6 +885,36 @@
       const candidate = analysis.candidate || {};
       return `Burgers α/β 界面 · ${topologyLabel(analysis.interface_topology)} · 最大几何失配 ${formatValue(candidate.max_imposed_strain_percent, 3)}%`;
     }
+    if (model.module === 'dislocation') {
+      return `位错模型 · ${analysis.slip_system || '滑移系'} · b·n ${formatValue(analysis.burgers_dot_plane_normal, 4)} · ${atoms} atoms`;
+    }
+    if (model.module === 'grain_boundary') {
+      return `晶界模型 · ${analysis.grain_boundary_type || 'bicrystal'} · 错配角 ${formatValue(analysis.misorientation_angle_deg, 2)}°`;
+    }
+    if (model.module === 'stacking_fault' || model.module === 'gamma_surface') {
+      return `层错 / γ-surface 构型 · ${analysis.series_point_count || 0} 个结构 · 当前 #${analysis.selected_index ?? 0}`;
+    }
+    if (model.module === 'twin') {
+      return `孪晶模型 · ${analysis.twin_system || 'preset'} · 剪切比例 ${formatValue(analysis.shear_fraction, 3)}`;
+    }
+    if (model.module === 'local_chemistry' || model.module === 'sro' || model.module === 'cluster' || model.module === 'precipitate') {
+      return `局域化学 · ${analysis.target_element || 'solute'} · 区域原子 ${analysis.cluster_size || 0}`;
+    }
+    if (model.module === 'crack') {
+      return `裂纹初始结构 · ${analysis.crack_plane || 'plane'} · 移除 ${analysis.removed_atom_count || 0} atoms`;
+    }
+    if (model.module === 'nanoindentation') {
+      return `纳米压痕初始结构 · R ${formatValue(analysis.indenter_radius_angstrom, 2)} Å · depth ${formatValue(analysis.indentation_depth_angstrom, 2)} Å`;
+    }
+    if (model.module === 'polycrystal') {
+      return `多晶模型 · ${analysis.grain_count || 0} grains · ${atoms} atoms`;
+    }
+    if (model.module === 'neb') {
+      return `NEB 初末态/插值构型 · ${analysis.series_point_count || 0} 个结构 · 当前 #${analysis.selected_index ?? 0}`;
+    }
+    if (model.module === 'training_set') {
+      return `训练构型集 · ${analysis.configuration_count || 0} 个 not_calculated 结构`;
+    }
     return `${atoms} atoms · 关键几何参数见下方`;
   }
 
@@ -843,6 +964,13 @@
         points: series.convergence.map((v, i) => ({ x: i, y: Number(v), index: i, label: `Preview step ${i}` })),
         xLabel: '优化步',
         yLabel: '目标函数'
+      };
+    }
+    if ((model.module === 'stacking_fault' || model.module === 'gamma_surface' || model.module === 'neb') && Array.isArray(series.lambda)) {
+      return {
+        points: series.lambda.map((v, i) => ({ x: i, y: Number(v), index: i, label: `Structure #${i}` })),
+        xLabel: '结构编号',
+        yLabel: '位移参数 λ'
       };
     }
     return {
@@ -1025,6 +1153,40 @@
     }
   }
 
+  const phase2BatchDownloadURL = '/api/export-batch?format=poscar';
+
+  function canExportSeriesPackage() {
+    return ['stacking_fault', 'gamma_surface', 'neb', 'training_set'].includes(model?.module || '');
+  }
+
+  async function saveSeriesPackage() {
+    if (!model) {
+      toast('请先生成模型');
+      return;
+    }
+    if (!canExportSeriesPackage()) {
+      toast('当前模型不是构型系列；请选择层错、NEB 或训练构型集。');
+      return;
+    }
+    try {
+      const response = await fetch('/api/export-batch/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: 'poscar',
+          suggested_name: 'TiAlloyStudio-Phase2-Geometry-Series.zip'
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw Error(payload.error || '构型系列包导出失败');
+      if (payload.cancelled) return;
+      showExportResult(payload);
+      toast('构型系列包已保存');
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
   async function openExportFolder() {
     if (!lastExportPath) {
       toast('还没有导出的文件');
@@ -1057,6 +1219,16 @@
           defect: 'Defects',
           surface: 'Surface',
           interface: 'α/β Interface',
+          dislocation: 'Dislocation',
+          grainBoundary: 'Grain boundary',
+          stackingFault: 'Fault / γ-surface geometry',
+          twin: 'Twin',
+          localChemistry: 'Local chemistry',
+          crack: 'Crack',
+          nanoindentation: 'Nanoindentation',
+          polycrystal: 'Polycrystal',
+          neb: 'NEB initial/final',
+          trainingSet: 'Dataset export',
           build: 'Generate & check model',
           manual: 'Manual',
           exit: 'Exit'
@@ -1071,6 +1243,16 @@
           defect: '缺陷',
           surface: '表面',
           interface: 'α/β 界面',
+          dislocation: '位错',
+          grainBoundary: '晶界',
+          stackingFault: '层错 / γ-surface 构型',
+          twin: '孪晶',
+          localChemistry: '局域化学',
+          crack: '裂纹',
+          nanoindentation: '纳米压痕',
+          polycrystal: '多晶',
+          neb: 'NEB 初末态',
+          trainingSet: '构型集导出',
           build: '生成并检查模型',
           manual: '手册',
           exit: '退出'
@@ -1084,6 +1266,16 @@
     document.querySelector('[data-module="vacancy"]').textContent = text.defect;
     document.querySelector('[data-module="surface"]').textContent = text.surface;
     document.querySelector('[data-module="interface"]').textContent = text.interface;
+    document.querySelector('[data-module="dislocation"]').textContent = text.dislocation;
+    document.querySelector('[data-module="grain_boundary"]').textContent = text.grainBoundary;
+    document.querySelector('[data-module="stacking_fault"]').textContent = text.stackingFault;
+    document.querySelector('[data-module="twin"]').textContent = text.twin;
+    document.querySelector('[data-module="local_chemistry"]').textContent = text.localChemistry;
+    document.querySelector('[data-module="crack"]').textContent = text.crack;
+    document.querySelector('[data-module="nanoindentation"]').textContent = text.nanoindentation;
+    document.querySelector('[data-module="polycrystal"]').textContent = text.polycrystal;
+    document.querySelector('[data-module="neb"]').textContent = text.neb;
+    document.querySelector('[data-module="training_set"]').textContent = text.trainingSet;
     $('buildBtn').textContent = text.build;
     $('manualBtn').textContent = text.manual;
     $('exitBtn').textContent = text.exit;
@@ -1144,6 +1336,7 @@
 	  ? saveExport(b.dataset.export)
       : toast('请先生成模型');
   });
+  $('seriesPackageBtn')?.addEventListener('click', saveSeriesPackage);
   $('openExportFolderBtn')?.addEventListener('click', openExportFolder);
   $('manualBtn').onclick = () => downloadBlob('/manual', 'TiAlloyStudio-Manual.docx');
 	$('refreshCapabilities').onclick = refreshCapabilities;

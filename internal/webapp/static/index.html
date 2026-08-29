@@ -41,6 +41,18 @@
       <button class="nav" data-module="vacancy">缺陷</button>
       <button class="nav" data-module="surface">表面</button>
       <button class="nav" data-module="interface">α/β 界面</button>
+      <div class="navGroup">第二阶段模型</div>
+      <button class="nav" data-module="dislocation">位错</button>
+      <button class="nav" data-module="grain_boundary">晶界</button>
+      <button class="nav" data-module="stacking_fault">层错 / γ-surface 构型</button>
+      <button class="nav" data-module="twin">孪晶</button>
+      <button class="nav" data-module="local_chemistry">局域化学</button>
+      <div class="navGroup">力学构型</div>
+      <button class="nav" data-module="crack">裂纹</button>
+      <button class="nav" data-module="nanoindentation">纳米压痕</button>
+      <button class="nav" data-module="polycrystal">多晶</button>
+      <button class="nav" data-module="neb">NEB 初末态</button>
+      <button class="nav" data-module="training_set">构型集导出</button>
     </nav>
 
     <section class="form" id="controls">
@@ -172,6 +184,137 @@
         <label id="interfaceVacuumLabel">真空层 Å<input id="interfaceVacuum" type="number" value="10" step="0.5"></label>
       </div>
 
+      <div id="dislocationControls" class="conditional">
+        <h3>3. 位错参数</h3>
+        <label>滑移系
+          <select id="slipSystem">
+            <option value="alpha_basal_a" data-phase-option="alpha">α basal &lt;a&gt;</option>
+            <option value="alpha_prismatic_a" data-phase-option="alpha">α prismatic &lt;a&gt;</option>
+            <option value="alpha_pyramidal_ca" data-phase-option="alpha">α pyramidal &lt;c+a&gt;</option>
+            <option value="beta_110_111" data-phase-option="beta">β {110}&lt;111&gt;</option>
+            <option value="beta_112_111" data-phase-option="beta">β {112}&lt;111&gt;</option>
+          </select>
+        </label>
+        <div class="double">
+          <label>位错类型
+            <select id="dislocationCharacter">
+              <option value="screw">screw</option>
+              <option value="edge">edge</option>
+              <option value="mixed">mixed</option>
+            </select>
+          </label>
+          <label>周期排列
+            <select id="dislocationArrangement">
+              <option value="single">single</option>
+              <option value="dipole">dipole</option>
+              <option value="quadrupole">quadrupole</option>
+            </select>
+          </label>
+        </div>
+        <label>核心标记半径 Å<input id="dislocationCoreRadius" type="number" value="3.0" step="0.1"></label>
+        <p class="micro">只生成 Volterra 初始几何和核心区域标签；不判断核心能量或收敛。</p>
+      </div>
+
+      <div id="grainBoundaryControls" class="conditional">
+        <h3>3. 晶界参数</h3>
+        <label>晶界类型
+          <select id="gbType">
+            <option value="tilt">tilt GB</option>
+            <option value="twist">twist GB</option>
+            <option value="general">general bicrystal</option>
+          </select>
+        </label>
+        <div class="double">
+          <label>旋转轴<input id="gbAxis" value="[001]"></label>
+          <label>晶界法向<input id="gbNormal" value="[100]"></label>
+        </div>
+        <div class="double">
+          <label>错配角 °<input id="gbAngleDeg" type="number" value="10" step="0.1"></label>
+          <label>重叠删除距离 Å<input id="overlapCutoff" type="number" value="1.2" step="0.1"></label>
+        </div>
+        <label>拓扑
+          <select id="gbTopology">
+            <option value="periodic">周期双晶胞</option>
+            <option value="vacuum">带真空/自由表面</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="faultControls" class="conditional">
+        <h3>3. 层错 / γ-surface 构型</h3>
+        <label>位移路径
+          <select id="gsfePreset">
+            <option value="alpha_basal_a" data-phase-option="alpha">α basal &lt;a&gt;</option>
+            <option value="alpha_prismatic_a" data-phase-option="alpha">α prismatic &lt;a&gt;</option>
+            <option value="beta_110_111" data-phase-option="beta">β {110}&lt;111&gt;</option>
+          </select>
+        </label>
+        <div class="double">
+          <label>位移步数<input id="seriesCount" type="number" value="4" min="1"></label>
+          <label>当前显示编号<input id="gsfeIndex" type="number" value="0" min="0"></label>
+        </div>
+        <p class="micro">生成一组刚性位移结构，用于后续外部项目；本软件不产生 γ 数值。</p>
+      </div>
+
+      <div id="twinControls" class="conditional">
+        <h3>3. 孪晶参数</h3>
+        <label>孪晶系统
+          <select id="twinSystem">
+            <option value="alpha_10-12">α {10-12} tensile twin</option>
+            <option value="alpha_11-22">α {11-22} compression twin</option>
+          </select>
+        </label>
+        <label>剪切比例<input id="twinShear" type="number" value="0.16" step="0.01"></label>
+      </div>
+
+      <div id="localChemistryControls" class="conditional">
+        <h3>3. 局域化学</h3>
+        <label>SRO / 团簇 / 偏聚设定<input id="clusterSpec" value="Al:6:center" spellcheck="false"></label>
+        <label>析出相简化夹杂（可空）<input id="precipitateSpec" value="" placeholder="Nb:12:center" spellcheck="false"></label>
+        <p class="micro">格式：元素:原子数:区域，例如 Al:6:center。只控制局域成分分布，不声称热力学平衡。</p>
+      </div>
+
+      <div id="crackControls" class="conditional">
+        <h3>3. 裂纹参数</h3>
+        <label>裂纹设定<input id="crackSpec" value="plane=(010),front=[001],length=8,opening=1.2" spellcheck="false"></label>
+        <p class="micro">生成 notch/crack plane/front 初始结构和区域标签，不做断裂计算。</p>
+      </div>
+
+      <div id="indentControls" class="conditional">
+        <h3>3. 纳米压痕参数</h3>
+        <label>压头设定<input id="indenterSpec" value="sphere,radius=8,depth=1.5" spellcheck="false"></label>
+        <p class="micro">生成 substrate + spherical indenter reference 标签，不做接触求解。</p>
+      </div>
+
+      <div id="polycrystalControls" class="conditional">
+        <h3>3. 多晶参数</h3>
+        <label>晶粒数<input id="grainCount" type="number" value="4" min="1"></label>
+        <p class="micro">第一版使用 Voronoi seed 分区并写入 grain_i 标签。</p>
+      </div>
+
+      <div id="nebControls" class="conditional">
+        <h3>3. NEB 初末态</h3>
+        <div class="double">
+          <label>移动原子编号<input id="nebSiteId" type="number" value="0" min="0"></label>
+          <label>插值构型数<input id="nebImages" type="number" value="3" min="0"></label>
+        </div>
+        <p class="micro">只生成 initial/final 与插值结构，不运行 NEB。</p>
+      </div>
+
+      <div id="datasetControls" class="conditional">
+        <h3>3. 训练构型集</h3>
+        <div class="double">
+          <label>数据集类型
+            <select id="datasetKind">
+              <option value="nep">NEP extXYZ</option>
+              <option value="aimd">AIMD seed extXYZ</option>
+            </select>
+          </label>
+          <label>构型数<input id="datasetCount" type="number" value="4" min="1"></label>
+        </div>
+        <p class="micro">打包结构与标签；不填假能量、假力或假应力。</p>
+      </div>
+
       <button id="buildBtn" class="primary">生成并检查模型</button>
     </section>
   </aside>
@@ -280,6 +423,7 @@
         <button data-export="extxyz">GPUMD extXYZ</button>
         <button data-export="lammps">LAMMPS data</button>
         <button data-export="cif">CIF</button>
+        <button id="seriesPackageBtn" class="wide" type="button">构型系列包 ZIP</button>
       </div>
       <div id="exportResult" class="exportResult" hidden></div>
       <button id="openExportFolderBtn" type="button" hidden>打开导出文件夹</button>

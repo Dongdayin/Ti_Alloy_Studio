@@ -18,7 +18,7 @@ import (
 )
 
 const product = "Ti Alloy Studio"
-const releaseVersion = "0.3.0-phase2-r1"
+const releaseVersion = "0.3.0-phase2-r2"
 const uninstallKey = `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio`
 
 func psq(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }

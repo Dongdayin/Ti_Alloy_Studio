@@ -18,6 +18,7 @@ body{margin:0;min-width:0}
 .panel h2,.sidebar h2{font-size:13px;text-transform:uppercase;letter-spacing:.65px;margin:0 0 10px;color:#445365}
 .nav{width:100%;height:39px;border:0;border-left:3px solid transparent;background:0 0;text-align:left;padding:0 10px;color:#39485a;cursor:pointer}
 .nav.active{background:#edf4ff;border-left-color:var(--accent);font-weight:600;color:#164e9f}
+.navGroup{margin:10px 0 4px;padding:6px 10px 4px;border-top:1px solid #e4eaf1;color:#68778a;font-size:11px;font-weight:700;letter-spacing:.4px}
 .form{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
 .workflowBlock{border:1px solid #e0e7ef;border-radius:8px;background:#fbfcfe;padding:10px;margin:8px 0}
 .workflowBlock h3,#defectControls h3,#surfaceControls h3,#interfaceControls h3{margin:0 0 8px;font-size:14px;color:#1f3f68}

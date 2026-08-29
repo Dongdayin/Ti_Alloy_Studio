@@ -14,39 +14,59 @@ import (
 )
 
 type BuildRequest struct {
-	Module             string             `json:"module"`
-	AlloyMode          string             `json:"alloy_mode,omitempty"`
-	Phase              string             `json:"phase"`
-	NX                 int                `json:"nx"`
-	NY                 int                `json:"ny"`
-	NZ                 int                `json:"nz"`
-	TargetX            float64            `json:"target_x"`
-	TargetY            float64            `json:"target_y"`
-	TargetZ            float64            `json:"target_z"`
-	AAlpha             float64            `json:"a_alpha"`
-	CAlpha             float64            `json:"c_alpha"`
-	ABeta              float64            `json:"a_beta"`
-	CompositionWt      map[string]float64 `json:"composition_wt"`
-	Seed               int64              `json:"seed"`
-	SQSBackend         string             `json:"sqs_backend"`
-	SQSSteps           int                `json:"sqs_steps"`
-	SQSShells          int                `json:"sqs_shells"`
-	ATATDistro         string             `json:"atat_distro"`
-	ATATPairCutoff     float64            `json:"atat_pair_cutoff_angstrom"`
-	ATATTripletCutoff  float64            `json:"atat_triplet_cutoff_angstrom"`
-	ATATRunSeconds     int                `json:"atat_run_seconds"`
-	SiteID             int                `json:"site_id"`
-	NewSpecies         string             `json:"new_species"`
-	SurfacePreset      string             `json:"surface_preset"`
-	Vacuum             float64            `json:"vacuum"`
-	InterfaceMaxRepeat int                `json:"interface_max_repeat"`
-	InterfaceCandidate int                `json:"interface_candidate"`
-	InterfaceDistance  float64            `json:"interface_distance"`
-	EOSRatios          []float64          `json:"eos_ratios"`
-	EOSIndex           int                `json:"eos_index"`
-	GSFEPreset         string             `json:"gsfe_preset"`
-	GSFESteps          int                `json:"gsfe_steps"`
-	GSFEIndex          int                `json:"gsfe_index"`
+	Module                 string             `json:"module"`
+	AlloyMode              string             `json:"alloy_mode,omitempty"`
+	Phase                  string             `json:"phase"`
+	NX                     int                `json:"nx"`
+	NY                     int                `json:"ny"`
+	NZ                     int                `json:"nz"`
+	TargetX                float64            `json:"target_x"`
+	TargetY                float64            `json:"target_y"`
+	TargetZ                float64            `json:"target_z"`
+	AAlpha                 float64            `json:"a_alpha"`
+	CAlpha                 float64            `json:"c_alpha"`
+	ABeta                  float64            `json:"a_beta"`
+	CompositionWt          map[string]float64 `json:"composition_wt"`
+	Seed                   int64              `json:"seed"`
+	SQSBackend             string             `json:"sqs_backend"`
+	SQSSteps               int                `json:"sqs_steps"`
+	SQSShells              int                `json:"sqs_shells"`
+	ATATDistro             string             `json:"atat_distro"`
+	ATATPairCutoff         float64            `json:"atat_pair_cutoff_angstrom"`
+	ATATTripletCutoff      float64            `json:"atat_triplet_cutoff_angstrom"`
+	ATATRunSeconds         int                `json:"atat_run_seconds"`
+	SiteID                 int                `json:"site_id"`
+	NewSpecies             string             `json:"new_species"`
+	SurfacePreset          string             `json:"surface_preset"`
+	Vacuum                 float64            `json:"vacuum"`
+	InterfaceMaxRepeat     int                `json:"interface_max_repeat"`
+	InterfaceCandidate     int                `json:"interface_candidate"`
+	InterfaceDistance      float64            `json:"interface_distance"`
+	EOSRatios              []float64          `json:"eos_ratios"`
+	EOSIndex               int                `json:"eos_index"`
+	GSFEPreset             string             `json:"gsfe_preset"`
+	GSFESteps              int                `json:"gsfe_steps"`
+	GSFEIndex              int                `json:"gsfe_index"`
+	OperationKind          string             `json:"operation_kind,omitempty"`
+	OrientationPreset      string             `json:"orientation_preset,omitempty"`
+	SlipSystem             string             `json:"slip_system,omitempty"`
+	BurgersVector          string             `json:"burgers_vector,omitempty"`
+	LineDirection          string             `json:"line_direction,omitempty"`
+	DislocationCharacter   string             `json:"dislocation_character,omitempty"`
+	DislocationArrangement string             `json:"dislocation_arrangement,omitempty"`
+	GBType                 string             `json:"gb_type,omitempty"`
+	GBAxis                 string             `json:"gb_axis,omitempty"`
+	GBNormal               string             `json:"gb_normal,omitempty"`
+	GBAngleDeg             float64            `json:"gb_angle_deg,omitempty"`
+	OverlapCutoff          float64            `json:"overlap_cutoff_angstrom,omitempty"`
+	TwinSystem             string             `json:"twin_system,omitempty"`
+	ClusterSpec            string             `json:"cluster_spec,omitempty"`
+	PrecipitateSpec        string             `json:"precipitate_spec,omitempty"`
+	CrackSpec              string             `json:"crack_spec,omitempty"`
+	IndenterSpec           string             `json:"indenter_spec,omitempty"`
+	GrainCount             int                `json:"grain_count,omitempty"`
+	SeriesCount            int                `json:"series_count,omitempty"`
+	DatasetKind            string             `json:"dataset_kind,omitempty"`
 }
 
 type BuildResponse struct {
@@ -161,6 +181,58 @@ func defaults(req *BuildRequest) {
 		} else {
 			req.GSFEPreset = "basal_a"
 		}
+	}
+	req.OperationKind = strings.ToLower(strings.TrimSpace(req.OperationKind))
+	req.OrientationPreset = strings.ToLower(strings.TrimSpace(req.OrientationPreset))
+	req.SlipSystem = strings.ToLower(strings.TrimSpace(req.SlipSystem))
+	if req.SlipSystem == "" {
+		if req.Phase == "beta" {
+			req.SlipSystem = "beta_110_111"
+		} else {
+			req.SlipSystem = "alpha_basal_a"
+		}
+	}
+	req.DislocationCharacter = strings.ToLower(strings.TrimSpace(req.DislocationCharacter))
+	if req.DislocationCharacter == "" {
+		line := strings.ToLower(strings.TrimSpace(req.LineDirection))
+		if line == "screw" || line == "edge" || line == "mixed" {
+			req.DislocationCharacter = line
+		} else {
+			req.DislocationCharacter = "screw"
+		}
+	}
+	req.DislocationArrangement = strings.ToLower(strings.TrimSpace(req.DislocationArrangement))
+	if req.DislocationArrangement == "" {
+		req.DislocationArrangement = "single"
+	}
+	req.GBType = strings.ToLower(strings.TrimSpace(req.GBType))
+	if req.GBType == "" {
+		req.GBType = "tilt"
+	}
+	if req.GBAxis == "" {
+		req.GBAxis = "[001]"
+	}
+	if req.GBNormal == "" {
+		req.GBNormal = "[100]"
+	}
+	if req.GBAngleDeg == 0 {
+		req.GBAngleDeg = 10
+	}
+	if req.OverlapCutoff <= 0 {
+		req.OverlapCutoff = 1.2
+	}
+	if req.TwinSystem == "" {
+		req.TwinSystem = "alpha_10-12"
+	}
+	if req.GrainCount < 1 {
+		req.GrainCount = 4
+	}
+	if req.SeriesCount < 1 {
+		req.SeriesCount = 4
+	}
+	req.DatasetKind = strings.ToLower(strings.TrimSpace(req.DatasetKind))
+	if req.DatasetKind == "" {
+		req.DatasetKind = "nep"
 	}
 }
 
@@ -325,6 +397,184 @@ func clampIndex(i, n int) int {
 	return i
 }
 
+func buildConfiguredHost(req BuildRequest, out *BuildResponse) error {
+	host, err := buildHost(req)
+	if err != nil {
+		return err
+	}
+	return applyTitaniumAlloyMode(host, req, req.AlloyMode, out, false)
+}
+
+func parseColonCountRegion(spec, fallbackElement string, fallbackCount int) (element string, count int, region string) {
+	element = fallbackElement
+	if strings.TrimSpace(element) == "" {
+		element = "Al"
+	}
+	count = fallbackCount
+	region = "center"
+	parts := strings.Split(strings.TrimSpace(spec), ":")
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+		element = strings.TrimSpace(parts[0])
+	}
+	if len(parts) > 1 {
+		var parsed int
+		if _, err := fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &parsed); err == nil && parsed > 0 {
+			count = parsed
+		}
+	}
+	if len(parts) > 2 && strings.TrimSpace(parts[2]) != "" {
+		region = strings.TrimSpace(parts[2])
+	}
+	if count < 1 {
+		count = 1
+	}
+	return element, count, region
+}
+
+func parseValueFromSpec(spec, key string, fallback float64) float64 {
+	spec = strings.ReplaceAll(spec, ";", ",")
+	for _, field := range strings.Split(spec, ",") {
+		field = strings.TrimSpace(field)
+		if !strings.Contains(field, "=") {
+			continue
+		}
+		parts := strings.SplitN(field, "=", 2)
+		if strings.EqualFold(strings.TrimSpace(parts[0]), key) {
+			var v float64
+			if _, err := fmt.Sscanf(strings.TrimSpace(parts[1]), "%f", &v); err == nil {
+				return v
+			}
+		}
+	}
+	return fallback
+}
+
+func appDefaultString(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(v)
+}
+
+type phase2SeriesEntry struct {
+	Kind      string
+	Index     int
+	Lambda    float64
+	Shift     model.Vec3
+	Structure model.Structure
+}
+
+func phase2SeriesForRequest(req BuildRequest) ([]phase2SeriesEntry, error) {
+	defaults(&req)
+	host, err := buildHost(req)
+	if err != nil {
+		return nil, err
+	}
+	var baseOut BuildResponse
+	baseOut.Analysis = map[string]any{}
+	baseOut.Series = map[string]any{}
+	if err = applyTitaniumAlloyMode(host, req, req.AlloyMode, &baseOut, false); err != nil {
+		return nil, err
+	}
+	host = baseOut.Structure
+	switch req.Module {
+	case "stacking_fault", "gamma_surface":
+		series, err := model.GenerateFaultSeries(host, model.FaultSeriesOptions{
+			Preset:     req.GSFEPreset,
+			Steps:      req.SeriesCount,
+			Cut:        0.5,
+			NormalAxis: 2,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]phase2SeriesEntry, 0, len(series.Points))
+		for _, p := range series.Points {
+			out = append(out, phase2SeriesEntry{Kind: "stacking_fault", Index: p.Index, Lambda: p.Lambda, Shift: p.Shift, Structure: p.Structure})
+		}
+		return out, nil
+	case "neb":
+		neb, err := model.GenerateNEBSeries(host, model.NEBOptions{MovingSite: clampIndex(req.SiteID, host.NAtoms()), Images: req.SeriesCount})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]phase2SeriesEntry, 0, len(neb.Points))
+		for _, p := range neb.Points {
+			out = append(out, phase2SeriesEntry{Kind: "neb", Index: p.Index, Lambda: p.Lambda, Structure: p.Structure})
+		}
+		return out, nil
+	case "training_set":
+		neb, err := model.GenerateNEBSeries(host, model.NEBOptions{MovingSite: 0, Images: req.SeriesCount})
+		if err != nil {
+			return nil, err
+		}
+		structures := []model.Structure{host}
+		for _, p := range neb.Points {
+			structures = append(structures, p.Structure)
+		}
+		dataset := model.BuildTrainingSet(structures, model.DatasetOptions{Kind: req.DatasetKind, Name: "TiAlloyStudio-phase2"})
+		out := make([]phase2SeriesEntry, 0, len(dataset.Structures))
+		for i, s := range dataset.Structures {
+			out = append(out, phase2SeriesEntry{Kind: "training_set", Index: i, Lambda: -1, Structure: s})
+		}
+		return out, nil
+	default:
+		return []phase2SeriesEntry{{Kind: req.Module, Index: 0, Lambda: -1, Structure: host}}, nil
+	}
+}
+
+func phase2BatchModule(module string) bool {
+	switch module {
+	case "stacking_fault", "gamma_surface", "neb", "training_set":
+		return true
+	default:
+		return false
+	}
+}
+
+func exportPhase2SeriesArchive(module string, entries []phase2SeriesEntry) (filename, mime string, content []byte, err error) {
+	if len(entries) == 0 {
+		return "", "", nil, errors.New("no structures in series")
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	var manifest strings.Builder
+	manifest.WriteString("index,kind,lambda,shift_x_angstrom,shift_y_angstrom,shift_z_angstrom,atoms,pbc,path\n")
+	for _, entry := range entries {
+		dir := fmt.Sprintf("%s_%03d", strings.ReplaceAll(entry.Kind, " ", "_"), entry.Index)
+		if entry.Lambda >= 0 {
+			dir = fmt.Sprintf("%s_%03d_lambda%.5f", strings.ReplaceAll(entry.Kind, " ", "_"), entry.Index, entry.Lambda)
+		}
+		path := dir + "/POSCAR"
+		f, e := zw.Create(path)
+		if e != nil {
+			return "", "", nil, e
+		}
+		if _, e = f.Write([]byte(model.ExportPOSCAR(entry.Structure, fmt.Sprintf("Ti Alloy Studio %s geometry %03d", entry.Kind, entry.Index)))); e != nil {
+			return "", "", nil, e
+		}
+		pbc := fmt.Sprintf("%t/%t/%t", entry.Structure.PBC[0], entry.Structure.PBC[1], entry.Structure.PBC[2])
+		fmt.Fprintf(&manifest, "%d,%s,%.10g,%.12g,%.12g,%.12g,%d,%s,%s\n",
+			entry.Index, entry.Kind, entry.Lambda, entry.Shift[0], entry.Shift[1], entry.Shift[2], entry.Structure.NAtoms(), pbc, path)
+	}
+	mf, e := zw.Create("manifest.csv")
+	if e != nil {
+		return "", "", nil, e
+	}
+	if _, e = mf.Write([]byte(manifest.String())); e != nil {
+		return "", "", nil, e
+	}
+	readme, e := zw.Create("README.txt")
+	if e != nil {
+		return "", "", nil, e
+	}
+	fmt.Fprintf(readme, "Ti Alloy Studio Phase 2 geometry series\r\nModule: %s\r\nStructures: %d\r\nAll structures are initial geometry candidates with not_relaxed and not_calculated metadata.\r\n", module, len(entries))
+	if e = zw.Close(); e != nil {
+		return "", "", nil, e
+	}
+	return "TiAlloyStudio-Phase2-Geometry-Series-POSCAR.zip", "application/zip", buf.Bytes(), nil
+}
+
 func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 	req := in
 	defaults(&req)
@@ -414,6 +664,222 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		out.Analysis["beta_atoms"] = m.BetaAtoms
 		out.Series["candidates"] = cands
 
+	case "dislocation":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		m, err := model.BuildDislocation(out.Structure, req.Phase, model.DislocationOptions{
+			SlipSystem:  req.SlipSystem,
+			Character:   req.DislocationCharacter,
+			Arrangement: req.DislocationArrangement,
+			CoreRadius:  parseValueFromSpec(req.OperationKind, "core_radius", 0),
+		})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = m.Structure
+		out.Analysis["slip_system"] = m.SlipSystem.Preset
+		out.Analysis["slip_plane"] = m.SlipSystem.Plane
+		out.Analysis["slip_direction"] = m.SlipSystem.Direction
+		out.Analysis["burgers_vector"] = m.SlipSystem.BurgersVector
+		out.Analysis["line_direction"] = m.SlipSystem.LineDirection
+		out.Analysis["slip_plane_normal"] = m.SlipSystem.SlipPlaneNormal
+		out.Analysis["burgers_dot_plane_normal"] = model.Dot(m.SlipSystem.BurgersVector, m.SlipSystem.SlipPlaneNormal)
+		out.Analysis["periodic_image_distance_angstrom"] = m.PeriodicImageDistance
+		out.Analysis["core_region"] = "unrelaxed initial geometry"
+
+	case "grain_boundary":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		gb, err := model.BuildGrainBoundary(out.Structure, model.GrainBoundaryOptions{
+			Type:               req.GBType,
+			Axis:               req.GBAxis,
+			AngleDeg:           req.GBAngleDeg,
+			Normal:             req.GBNormal,
+			Periodic:           !strings.Contains(strings.ToLower(req.SurfacePreset), "vacuum"),
+			OverlapCutoff:      req.OverlapCutoff,
+			TranslationVariant: req.InterfaceCandidate,
+		})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = gb.Structure
+		out.Analysis["grain_boundary_type"] = gb.Type
+		out.Analysis["grain_1_orientation"] = gb.Grain1Orientation
+		out.Analysis["grain_2_orientation"] = gb.Grain2Orientation
+		out.Analysis["misorientation_angle_deg"] = gb.MisorientationAngleDeg
+		out.Analysis["gb_plane_normal"] = gb.GBPlaneNormal
+		out.Analysis["in_plane_periodic_matching_mismatch_percent"] = gb.InPlaneMismatchPercent
+		out.Analysis["removed_overlap_atom_count"] = gb.RemovedOverlapAtomCount
+		out.Analysis["interface_count"] = gb.InterfaceCount
+		out.Analysis["translation_candidate_index"] = gb.TranslationCandidateIndex
+
+	case "stacking_fault", "gamma_surface":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		series, err := model.GenerateFaultSeries(out.Structure, model.FaultSeriesOptions{
+			Preset:     req.GSFEPreset,
+			Steps:      req.SeriesCount,
+			Cut:        0.5,
+			NormalAxis: 2,
+		})
+		if err != nil {
+			return out, err
+		}
+		idx := clampIndex(req.GSFEIndex, len(series.Points))
+		out.Structure = series.Points[idx].Structure
+		lambdas := make([]float64, len(series.Points))
+		for i, p := range series.Points {
+			lambdas[i] = p.Lambda
+		}
+		out.Series["lambda"] = lambdas
+		out.Analysis["series_point_count"] = len(series.Points)
+		out.Analysis["selected_index"] = idx
+		out.Analysis["area_angstrom2"] = series.Area
+		out.Analysis["fault_count"] = series.FaultCount
+		out.Analysis["plane"] = series.Plane
+		out.Analysis["direction"] = series.Direction
+		out.Analysis["path_angstrom"] = series.Path
+		out.Analysis["plane_normal"] = series.PlaneNormal
+		out.Analysis["geometry_series"] = "stacking fault and gamma-surface displacement structures"
+
+	case "twin":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		twin, err := model.BuildTwin(out.Structure, model.TwinOptions{TwinSystem: req.TwinSystem, ShearFraction: parseValueFromSpec(req.OperationKind, "shear", 0)})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = twin.Structure
+		out.Analysis["twin_system"] = twin.TwinSystem
+		out.Analysis["shear_fraction"] = twin.ShearFraction
+		out.Analysis["geometry_operation"] = "mirror/shear initial geometry"
+
+	case "local_chemistry", "sro", "cluster", "precipitate":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		element, count, region := parseColonCountRegion(req.ClusterSpec, req.NewSpecies, req.SeriesCount)
+		kind := "solute_cluster"
+		if out.Module == "sro" {
+			kind = "sro"
+		}
+		if out.Module == "precipitate" || strings.TrimSpace(req.PrecipitateSpec) != "" {
+			kind = "precipitate_inclusion"
+			if strings.TrimSpace(req.PrecipitateSpec) != "" {
+				element, count, region = parseColonCountRegion(req.PrecipitateSpec, element, count)
+			}
+		}
+		chem, err := model.ApplyLocalChemistry(out.Structure, model.LocalChemistryOptions{Kind: kind, TargetElement: element, ClusterSize: count, Seed: req.Seed, Region: region})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = chem.Structure
+		out.Analysis["local_chemistry_kind"] = chem.Kind
+		out.Analysis["target_element"] = chem.TargetElement
+		out.Analysis["cluster_size"] = chem.ClusterSize
+		out.Analysis["random_seed"] = chem.Seed
+		out.Analysis["region_inside"] = chem.RegionInside
+		out.Analysis["region_outside"] = chem.RegionOutside
+		out.Analysis["nearest_neighbor_pair_counts"] = chem.PairCounts
+		out.Analysis["warren_cowley"] = chem.WarrenCowley
+
+	case "crack":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		crack, err := model.BuildCrack(out.Structure, model.CrackOptions{
+			Plane:   appDefaultString(req.GBNormal, "(010)"),
+			Front:   appDefaultString(req.GBAxis, "[001]"),
+			Length:  parseValueFromSpec(req.CrackSpec, "length", 0),
+			Opening: parseValueFromSpec(req.CrackSpec, "opening", 0),
+			Vacuum:  req.Vacuum,
+		})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = crack.Structure
+		out.Analysis["crack_plane"] = crack.Plane
+		out.Analysis["crack_front"] = crack.Front
+		out.Analysis["removed_atom_count"] = crack.RemovedAtomCount
+		out.Analysis["initial_crack_geometry"] = "notch/crack seed only"
+
+	case "nanoindentation":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		indent, err := model.BuildNanoindentation(out.Structure, model.IndenterOptions{
+			Radius: parseValueFromSpec(req.IndenterSpec, "radius", 0),
+			Depth:  parseValueFromSpec(req.IndenterSpec, "depth", 0),
+		})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = indent.Structure
+		out.Analysis["indenter_radius_angstrom"] = indent.IndenterRadius
+		out.Analysis["indentation_depth_angstrom"] = indent.Depth
+		out.Analysis["indenter_center"] = indent.IndenterCenter
+		out.Analysis["geometry_operation"] = "substrate with spherical indenter reference"
+
+	case "polycrystal":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		poly, err := model.BuildPolycrystal(out.Structure, model.PolycrystalOptions{GrainCount: req.GrainCount, Seed: req.Seed})
+		if err != nil {
+			return out, err
+		}
+		out.Structure = poly.Structure
+		out.Analysis["grain_count"] = req.GrainCount
+		out.Analysis["grain_atom_counts"] = poly.GrainAtomCounts
+		out.Analysis["orientation_seed"] = req.Seed
+		out.Series["grain_orientations"] = poly.Orientations
+
+	case "neb":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		neb, err := model.GenerateNEBSeries(out.Structure, model.NEBOptions{MovingSite: clampIndex(req.SiteID, out.Structure.NAtoms()), Images: req.SeriesCount})
+		if err != nil {
+			return out, err
+		}
+		idx := clampIndex(req.GSFEIndex, len(neb.Points))
+		out.Structure = neb.Points[idx].Structure
+		lambdas := make([]float64, len(neb.Points))
+		for i, p := range neb.Points {
+			lambdas[i] = p.Lambda
+		}
+		out.Series["lambda"] = lambdas
+		out.Analysis["series_point_count"] = len(neb.Points)
+		out.Analysis["selected_index"] = idx
+		out.Analysis["moving_site"] = clampIndex(req.SiteID, neb.Reference.NAtoms())
+		out.Analysis["geometry_series"] = "NEB initial/final/interpolated structures"
+
+	case "training_set":
+		if err := buildConfiguredHost(req, &out); err != nil {
+			return out, err
+		}
+		series, err := model.GenerateNEBSeries(out.Structure, model.NEBOptions{MovingSite: 0, Images: req.SeriesCount})
+		if err != nil {
+			return out, err
+		}
+		structures := []model.Structure{out.Structure}
+		for _, p := range series.Points {
+			structures = append(structures, p.Structure)
+		}
+		dataset := model.BuildTrainingSet(structures, model.DatasetOptions{Kind: req.DatasetKind, Name: "TiAlloyStudio-phase2"})
+		out.Structure = dataset.Structures[0]
+		out.Analysis["dataset_kind"] = dataset.Kind
+		out.Analysis["dataset_name"] = dataset.Name
+		out.Analysis["configuration_count"] = len(dataset.Structures)
+		out.Series["configuration_indices"] = make([]int, len(dataset.Structures))
+		for i := range dataset.Structures {
+			out.Series["configuration_indices"].([]int)[i] = i
+		}
+
 	case "eos":
 		host, err := buildHost(req)
 		if err != nil {
@@ -482,6 +948,13 @@ func (s *State) ExportBatch(format string) (filename, mime string, content []byt
 	}
 	if strings.ToLower(format) != "poscar" && strings.ToLower(format) != "vasp" {
 		return "", "", nil, fmt.Errorf("unsupported batch format %q", format)
+	}
+	if phase2BatchModule(cur.Module) {
+		entries, e := phase2SeriesForRequest(req)
+		if e != nil {
+			return "", "", nil, e
+		}
+		return exportPhase2SeriesArchive(cur.Module, entries)
 	}
 	switch cur.Module {
 	case "eos":
@@ -623,6 +1096,16 @@ func addCheck(r *model.ValidationReport, name, status, message string, value flo
 	}
 }
 
+func countSiteLabel(s model.Structure, label string) int {
+	n := 0
+	for _, got := range s.SiteLabels {
+		if got == label {
+			n++
+		}
+	}
+	return n
+}
+
 func moduleValidation(out *BuildResponse) {
 	switch out.Module {
 	case "random", "sqs":
@@ -686,6 +1169,95 @@ func moduleValidation(out *BuildResponse) {
 			addCheck(&out.Validation, "interface_imposed_strain", "PASS",
 				"Balanced coherent-cell prestrain is reported without a universal acceptance threshold. Compare candidate cells and verify relaxed stress/energy and size convergence.",
 				c.MaxImposedStrainPercent)
+		}
+
+	case "dislocation":
+		dot, _ := out.Analysis["burgers_dot_plane_normal"].(float64)
+		if math.Abs(dot) < 1e-8 {
+			addCheck(&out.Validation, "dislocation_slip_geometry", "PASS", "Burgers vector lies in the selected slip plane", dot)
+		} else {
+			addCheck(&out.Validation, "dislocation_slip_geometry", "FAIL", "Burgers vector is not in the selected slip plane", dot)
+		}
+		cores := countSiteLabel(out.Structure, "dislocation_core")
+		if cores > 0 {
+			addCheck(&out.Validation, "dislocation_core_labels", "PASS", "Core-neighborhood atoms are labeled for visual inspection; the core is not relaxed.", float64(cores))
+		} else {
+			addCheck(&out.Validation, "dislocation_core_labels", "WARN", "No atom fell inside the requested core label radius; increase model size or core radius.", 0)
+		}
+		if d, ok := out.Analysis["periodic_image_distance_angstrom"].(float64); ok && d > 0 {
+			addCheck(&out.Validation, "dislocation_periodic_image_distance", "PASS", "Nearest periodic image distance is reported as a size diagnostic, not as a convergence claim.", d)
+		}
+
+	case "grain_boundary":
+		if countSiteLabel(out.Structure, "grain_1") > 0 && countSiteLabel(out.Structure, "grain_2") > 0 {
+			addCheck(&out.Validation, "grain_boundary_region_labels", "PASS", "Both grain regions are labeled", 2)
+		} else {
+			addCheck(&out.Validation, "grain_boundary_region_labels", "FAIL", "Grain-boundary model must contain grain_1 and grain_2 labels", 0)
+		}
+		if c, ok := out.Analysis["interface_count"].(int); ok && c > 0 {
+			addCheck(&out.Validation, "grain_boundary_interface_count", "PASS", "Interface count is recorded for the chosen topology", float64(c))
+		}
+		if m, ok := out.Analysis["in_plane_periodic_matching_mismatch_percent"].(float64); ok && m >= 0 {
+			addCheck(&out.Validation, "grain_boundary_periodic_matching", "PASS", "In-plane periodic matching mismatch is reported as a geometric diagnostic.", m)
+		}
+
+	case "stacking_fault", "gamma_surface":
+		area, _ := out.Analysis["area_angstrom2"].(float64)
+		fc, _ := out.Analysis["fault_count"].(int)
+		path, _ := out.Analysis["path_angstrom"].(model.Vec3)
+		normal, _ := out.Analysis["plane_normal"].(model.Vec3)
+		dot := math.Abs(model.Dot(path, normal))
+		if area > 0 && fc > 0 && dot < 1e-8 {
+			addCheck(&out.Validation, "fault_displacement_geometry", "PASS", "Displacement path lies in the selected plane and fault geometry diagnostics are recorded.", dot)
+		} else {
+			addCheck(&out.Validation, "fault_displacement_geometry", "FAIL", "Fault displacement direction, area, or count is invalid", dot)
+		}
+		if n, ok := out.Analysis["series_point_count"].(int); ok && n > 1 {
+			addCheck(&out.Validation, "fault_series_count", "PASS", "A geometry series was generated for batch export.", float64(n))
+		}
+
+	case "twin":
+		if countSiteLabel(out.Structure, "parent") > 0 && countSiteLabel(out.Structure, "twin") > 0 {
+			addCheck(&out.Validation, "twin_region_labels", "PASS", "Parent and twinned regions are labeled for inspection.", 2)
+		} else {
+			addCheck(&out.Validation, "twin_region_labels", "FAIL", "Twin model must label parent and twin regions.", 0)
+		}
+
+	case "local_chemistry", "sro", "cluster", "precipitate":
+		if n, ok := out.Analysis["cluster_size"].(int); ok && n > 0 {
+			addCheck(&out.Validation, "local_chemistry_region_size", "PASS", "Target local-chemistry region size is recorded.", float64(n))
+		}
+		if out.Analysis["warren_cowley"] != nil {
+			addCheck(&out.Validation, "local_chemistry_pair_statistics", "PASS", "Nearest-neighbor pair counts and Warren-Cowley diagnostics are recorded.", 1)
+		}
+
+	case "crack":
+		if n, ok := out.Analysis["removed_atom_count"].(int); ok && n > 0 {
+			addCheck(&out.Validation, "crack_notch_atoms_removed", "PASS", "Crack/notch seed removed atoms and labeled nearby crack-surface atoms.", float64(n))
+		} else {
+			addCheck(&out.Validation, "crack_notch_atoms_removed", "WARN", "No atom was removed for the requested crack seed; increase crack length/opening or model size.", 0)
+		}
+
+	case "nanoindentation":
+		if countSiteLabel(out.Structure, "near_indenter") > 0 {
+			addCheck(&out.Validation, "indentation_region_labels", "PASS", "Substrate atoms near the indenter reference are labeled.", float64(countSiteLabel(out.Structure, "near_indenter")))
+		} else {
+			addCheck(&out.Validation, "indentation_region_labels", "WARN", "No atoms were labeled near the indenter reference; increase depth or radius.", 0)
+		}
+
+	case "polycrystal":
+		if n, ok := out.Analysis["grain_count"].(int); ok && n > 0 {
+			addCheck(&out.Validation, "polycrystal_grain_count", "PASS", "Voronoi grain count and atom-count distribution are recorded.", float64(n))
+		}
+
+	case "neb":
+		if n, ok := out.Analysis["series_point_count"].(int); ok && n > 1 {
+			addCheck(&out.Validation, "neb_geometry_series_count", "PASS", "Initial, final and interpolated NEB geometry images were generated.", float64(n))
+		}
+
+	case "training_set":
+		if n, ok := out.Analysis["configuration_count"].(int); ok && n > 0 {
+			addCheck(&out.Validation, "training_set_configuration_count", "PASS", "Training-set configuration count is recorded with geometry-only labels.", float64(n))
 		}
 
 	case "eos":

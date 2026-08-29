@@ -64,6 +64,7 @@ func newHandlerWithNativeHooks(state *app.State, hooks nativeHooks) http.Handler
 	mux.HandleFunc("/api/export", a.export)
 	mux.HandleFunc("/api/export/save", a.exportSave)
 	mux.HandleFunc("/api/export-batch", a.exportBatch)
+	mux.HandleFunc("/api/export-batch/save", a.exportBatchSave)
 	mux.HandleFunc("/api/environment", a.environment)
 	mux.HandleFunc("/api/capabilities", a.capabilities)
 	mux.HandleFunc("/api/connectors", a.connectors)
@@ -86,7 +87,7 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":     "Ti Alloy Studio",
-		"version":  "0.3.0-phase2-r1",
+		"version":  "0.3.0-phase2-r2",
 		"engine":   "TiModelCore Native + bundled Atomsk/ASE/spglib/pymatgen/AtomMan validation",
 		"platform": "Windows x64 standalone offline structure modeling; no WSL or local solver required",
 	})
@@ -168,6 +169,31 @@ func (a *api) exportBatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
+}
+
+func (a *api) exportBatchSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Format        string `json:"format"`
+		SuggestedName string `json:"suggested_name"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	name, mime, content, err := a.state.ExportBatch(req.Format)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	suggested := strings.TrimSpace(req.SuggestedName)
+	if suggested == "" {
+		suggested = name
+	}
+	a.saveBytes(w, saveFileRequest{Format: "zip", SuggestedName: suggested, MIME: mime}, content)
 }
 
 func (a *api) projectSave(w http.ResponseWriter, r *http.Request) {
@@ -321,6 +347,8 @@ func saveDialogFilter(format string) string {
 		return "CIF structure|*.cif|All files|*.*"
 	case "tias-project":
 		return "Ti Alloy Studio project|*.tias-project|All files|*.*"
+	case "zip":
+		return "Ti Alloy Studio series package|*.zip|All files|*.*"
 	default:
 		return "All files|*.*"
 	}
