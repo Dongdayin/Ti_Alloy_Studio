@@ -63,3 +63,35 @@ func TestWorkbenchSendsPhase2ControlsAndSupportsSeriesPackageExport(t *testing.T
 		t.Fatal("front end still exposes calculation-energy workflow")
 	}
 }
+
+func TestWorkbenchExposesPhase2PrecisionControlsAndViewerHelpers(t *testing.T) {
+	page := servedAsset(t, "/")
+	for _, needle := range []string{
+		`id="burgersVector"`,
+		`id="lineDirection"`,
+		`id="grain1Orientation"`,
+		`id="grain2Orientation"`,
+		`id="crackPlane"`,
+		`id="crackFront"`,
+		`id="trainingExportFormat"`,
+	} {
+		if !strings.Contains(page, needle) {
+			t.Fatalf("precision Phase 2 UI control missing %q", needle)
+		}
+	}
+
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"drawDirectionHelpers",
+		"viewer_helpers",
+		"burgers_vector: $('burgersVector')",
+		"line_direction: $('lineDirection')",
+		"grain_1_orientation",
+		"grain_2_orientation",
+		"trainingExportFormat",
+	} {
+		if !strings.Contains(appJS, needle) {
+			t.Fatalf("precision Phase 2 behavior missing %q", needle)
+		}
+	}
+}

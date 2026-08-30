@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -20,10 +21,12 @@ type SlipSystem struct {
 }
 
 type DislocationOptions struct {
-	SlipSystem  string
-	Character   string
-	Arrangement string
-	CoreRadius  float64
+	SlipSystem    string
+	BurgersVector Vec3
+	LineDirection Vec3
+	Character     string
+	Arrangement   string
+	CoreRadius    float64
 }
 
 type DislocationModel struct {
@@ -42,6 +45,8 @@ type GrainBoundaryOptions struct {
 	Periodic           bool
 	OverlapCutoff      float64
 	TranslationVariant int
+	Grain1Orientation  string
+	Grain2Orientation  string
 }
 
 type GrainBoundaryModel struct {
@@ -207,6 +212,132 @@ func centerOf(s Structure) Vec3 {
 	return VScale(VAdd(min, max), 0.5)
 }
 
+func vectorIsSet(v Vec3) bool {
+	return Norm(v) > 1e-12
+}
+
+func scanVectorNumbers(spec string) []float64 {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil
+	}
+	repl := strings.NewReplacer("[", " ", "]", " ", "(", " ", ")", " ", "{", " ", "}", " ", "<", " ", ">", " ", ",", " ", ";", " ", "|", " ", "\t", " ")
+	cleaned := strings.TrimSpace(repl.Replace(spec))
+	fields := strings.Fields(cleaned)
+	if len(fields) >= 3 {
+		nums := make([]float64, 0, len(fields))
+		for _, f := range fields {
+			v, err := strconv.ParseFloat(f, 64)
+			if err != nil {
+				return nil
+			}
+			nums = append(nums, v)
+		}
+		return nums
+	}
+	if cleaned == "" {
+		return nil
+	}
+	nums := []float64{}
+	sign := 1.0
+	for _, r := range cleaned {
+		switch {
+		case r == '-':
+			sign = -1
+		case r == '+':
+			sign = 1
+		case r >= '0' && r <= '9':
+			nums = append(nums, sign*float64(r-'0'))
+			sign = 1
+		case r == ' ':
+			continue
+		default:
+			return nil
+		}
+	}
+	return nums
+}
+
+func VectorFromSpec(spec string) (Vec3, bool) {
+	nums := scanVectorNumbers(spec)
+	if len(nums) < 3 {
+		return Vec3{}, false
+	}
+	return Vec3{nums[0], nums[1], nums[2]}, true
+}
+
+func OrientationMatrixFromSpec(spec string) (Mat3, bool) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return Mat3{}, false
+	}
+	rows := strings.FieldsFunc(spec, func(r rune) bool { return r == ';' || r == '|' || r == '\n' || r == '\r' })
+	if len(rows) == 3 {
+		var m Mat3
+		for i, row := range rows {
+			v, ok := VectorFromSpec(row)
+			if !ok || !vectorIsSet(v) {
+				return Mat3{}, false
+			}
+			m[i] = Unit(v)
+		}
+		return m, true
+	}
+	nums := scanVectorNumbers(spec)
+	if len(nums) != 9 {
+		return Mat3{}, false
+	}
+	m := Mat3{{nums[0], nums[1], nums[2]}, {nums[3], nums[4], nums[5]}, {nums[6], nums[7], nums[8]}}
+	for i := range m {
+		if !vectorIsSet(m[i]) {
+			return Mat3{}, false
+		}
+		m[i] = Unit(m[i])
+	}
+	return m, true
+}
+
+func rotationAroundAxis(axis Vec3, angleRad float64) Mat3 {
+	u := Unit(axis)
+	if !vectorIsSet(u) {
+		u = Vec3{0, 0, 1}
+	}
+	x, y, z := u[0], u[1], u[2]
+	c, s := math.Cos(angleRad), math.Sin(angleRad)
+	t := 1 - c
+	return Mat3{
+		{t*x*x + c, t*x*y - s*z, t*x*z + s*y},
+		{t*x*y + s*z, t*y*y + c, t*y*z - s*x},
+		{t*x*z - s*y, t*y*z + s*x, t*z*z + c},
+	}
+}
+
+func applyMatrix(m Mat3, v Vec3) Vec3 {
+	return Vec3{
+		m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2],
+		m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2],
+		m[2][0]*v[0] + m[2][1]*v[1] + m[2][2]*v[2],
+	}
+}
+
+func matrixMisorientationDeg(a, b Mat3) float64 {
+	r := MatMul(b, Transpose(a))
+	trace := r[0][0] + r[1][1] + r[2][2]
+	return math.Acos(Clamp((trace-1)/2, -1, 1)) * 180 / math.Pi
+}
+
+func dominantAxis(v Vec3) int {
+	axis := 0
+	best := math.Abs(v[0])
+	for i := 1; i < 3; i++ {
+		if a := math.Abs(v[i]); a > best {
+			best = a
+			axis = i
+		}
+	}
+	return axis
+}
+
 func slipSystem(phase, preset string, cell Mat3) (SlipSystem, error) {
 	phase = strings.ToLower(strings.TrimSpace(phase))
 	preset = strings.ToLower(strings.TrimSpace(preset))
@@ -243,6 +374,12 @@ func BuildDislocation(host Structure, phase string, opts DislocationOptions) (Di
 	if err != nil {
 		return DislocationModel{}, err
 	}
+	if vectorIsSet(opts.BurgersVector) {
+		sys.BurgersVector = opts.BurgersVector
+	}
+	if vectorIsSet(opts.LineDirection) {
+		sys.LineDirection = Unit(opts.LineDirection)
+	}
 	out := copyStructure(host)
 	character := strings.ToLower(strings.TrimSpace(opts.Character))
 	if character == "" {
@@ -257,21 +394,46 @@ func BuildDislocation(host Structure, phase string, opts DislocationOptions) (Di
 		coreRadius = math.Max(1.5, 0.75*Norm(sys.BurgersVector))
 	}
 	c := centerOf(host)
+	centers := []Vec3{c}
+	signs := []float64{1}
+	switch arrangement {
+	case "dipole":
+		offset := 0.18 * ShortestPeriodicTranslation(host)
+		centers = []Vec3{VAdd(c, Vec3{-offset, 0, 0}), VAdd(c, Vec3{offset, 0, 0})}
+		signs = []float64{1, -1}
+	case "quadrupole":
+		offset := 0.18 * ShortestPeriodicTranslation(host)
+		centers = []Vec3{
+			VAdd(c, Vec3{-offset, -offset, 0}),
+			VAdd(c, Vec3{offset, -offset, 0}),
+			VAdd(c, Vec3{-offset, offset, 0}),
+			VAdd(c, Vec3{offset, offset, 0}),
+		}
+		signs = []float64{1, -1, -1, 1}
+	}
 	out.SiteLabels = make([]string, out.NAtoms())
 	for i, p := range out.Positions {
-		dx := p[0] - c[0]
-		dy := p[1] - c[1]
-		r2 := dx*dx + dy*dy
-		theta := math.Atan2(dy, dx)
-		scale := theta / (2 * math.Pi)
-		disp := VScale(sys.BurgersVector, 0.18*scale)
-		if character == "screw" {
-			disp = VScale(sys.LineDirection, 0.18*Norm(sys.BurgersVector)*scale)
-		} else if character == "mixed" {
-			disp = VScale(VAdd(Unit(sys.BurgersVector), sys.LineDirection), 0.09*Norm(sys.BurgersVector)*scale)
+		disp := Vec3{}
+		inCore := false
+		for j, core := range centers {
+			dx := p[0] - core[0]
+			dy := p[1] - core[1]
+			r2 := dx*dx + dy*dy
+			theta := math.Atan2(dy, dx)
+			scale := signs[j] * theta / (2 * math.Pi)
+			part := VScale(sys.BurgersVector, 0.18*scale)
+			if character == "screw" {
+				part = VScale(sys.LineDirection, 0.18*Norm(sys.BurgersVector)*scale)
+			} else if character == "mixed" {
+				part = VScale(VAdd(Unit(sys.BurgersVector), sys.LineDirection), 0.09*Norm(sys.BurgersVector)*scale)
+			}
+			disp = VAdd(disp, part)
+			if r2 <= coreRadius*coreRadius {
+				inCore = true
+			}
 		}
 		out.Positions[i] = VAdd(p, disp)
-		if r2 <= coreRadius*coreRadius {
+		if inCore {
 			out.SiteLabels[i] = "dislocation_core"
 		} else {
 			out.SiteLabels[i] = "matrix"
@@ -288,6 +450,8 @@ func BuildDislocation(host Structure, phase string, opts DislocationOptions) (Di
 	out.Meta["line_direction"] = sys.LineDirection
 	out.Meta["slip_plane_normal"] = sys.SlipPlaneNormal
 	out.Meta["burgers_dot_plane_normal"] = Dot(sys.BurgersVector, sys.SlipPlaneNormal)
+	out.Meta["dislocation_core_count"] = len(centers)
+	out.Meta["dislocation_core_centers"] = centers
 	out.Meta["core_region_unrelaxed"] = true
 	out.Meta["defect_periodic_image_distance_angstrom"] = ShortestPeriodicTranslation(host)
 	return DislocationModel{Structure: out, SlipSystem: sys, Character: character, Arrangement: arrangement, PeriodicImageDistance: ShortestPeriodicTranslation(host)}, nil
@@ -316,7 +480,22 @@ func BuildGrainBoundary(host Structure, opts GrainBoundaryOptions) (GrainBoundar
 	if angle == 0 {
 		angle = 10
 	}
+	axis := Vec3{0, 0, 1}
+	if v, ok := VectorFromSpec(opts.Axis); ok && vectorIsSet(v) {
+		axis = Unit(v)
+	}
 	normal := Unit(host.Cell[0])
+	if v, ok := VectorFromSpec(opts.Normal); ok && vectorIsSet(v) {
+		normal = Unit(v)
+	}
+	orient1 := rotationAroundAxis(axis, -angle*math.Pi/360)
+	orient2 := rotationAroundAxis(axis, angle*math.Pi/360)
+	if m, ok := OrientationMatrixFromSpec(opts.Grain1Orientation); ok {
+		orient1 = m
+	}
+	if m, ok := OrientationMatrixFromSpec(opts.Grain2Orientation); ok {
+		orient2 = m
+	}
 	c := centerOf(host)
 	out := copyStructure(host)
 	out.SiteLabels = make([]string, 0, out.NAtoms())
@@ -330,12 +509,12 @@ func BuildGrainBoundary(host Structure, opts GrainBoundaryOptions) (GrainBoundar
 	}
 	for i, p := range host.Positions {
 		label := "grain_1"
-		rot := -angle * math.Pi / 360
-		if p[0] >= c[0] {
+		orient := orient1
+		if Dot(VSub(p, c), normal) >= 0 {
 			label = "grain_2"
-			rot = angle * math.Pi / 360
+			orient = orient2
 		}
-		q := rotateAround(p, c, rot)
+		q := VAdd(c, applyMatrix(orient, VSub(p, c)))
 		if label == "grain_2" && shouldRemoveOverlap(q, positions, labels, cutoff) {
 			removed++
 			continue
@@ -347,31 +526,36 @@ func BuildGrainBoundary(host Structure, opts GrainBoundaryOptions) (GrainBoundar
 	out.Positions = positions
 	out.Species = species
 	out.SiteLabels = labels
-	out.PBC = [3]bool{true, true, opts.Periodic}
+	out.PBC = [3]bool{true, true, true}
 	interfaceCount := 1
 	if opts.Periodic {
 		interfaceCount = 2
-		out.PBC = [3]bool{true, true, true}
+	} else {
+		out.PBC[dominantAxis(normal)] = false
 	}
+	misorientation := matrixMisorientationDeg(orient1, orient2)
+	mismatch := math.Abs(misorientation) / 180 * 100
 	markGeometryOnly(&out, "grain_boundary")
 	out.Meta["operation"] = "grain_boundary"
 	out.Meta["grain_boundary_type"] = gbType
 	out.Meta["grain_boundary_axis"] = opts.Axis
 	out.Meta["grain_boundary_normal"] = opts.Normal
-	out.Meta["misorientation_angle_deg"] = angle
+	out.Meta["misorientation_angle_deg"] = misorientation
 	out.Meta["gb_plane_normal"] = normal
-	out.Meta["in_plane_periodic_matching_mismatch_percent"] = 0.0
+	out.Meta["grain_1_orientation"] = orient1
+	out.Meta["grain_2_orientation"] = orient2
+	out.Meta["in_plane_periodic_matching_mismatch_percent"] = mismatch
 	out.Meta["removed_overlap_atom_count"] = removed
 	out.Meta["interface_count"] = interfaceCount
 	out.Meta["rigid_translation_candidate_index"] = opts.TranslationVariant
 	return GrainBoundaryModel{
 		Structure:                 out,
 		Type:                      gbType,
-		Grain1Orientation:         zRotation(-angle * math.Pi / 360),
-		Grain2Orientation:         zRotation(angle * math.Pi / 360),
-		MisorientationAngleDeg:    angle,
+		Grain1Orientation:         orient1,
+		Grain2Orientation:         orient2,
+		MisorientationAngleDeg:    misorientation,
 		GBPlaneNormal:             normal,
-		InPlaneMismatchPercent:    0,
+		InPlaneMismatchPercent:    mismatch,
 		RemovedOverlapAtomCount:   removed,
 		InterfaceCount:            interfaceCount,
 		TranslationCandidateIndex: opts.TranslationVariant,

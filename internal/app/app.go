@@ -57,6 +57,8 @@ type BuildRequest struct {
 	GBType                 string             `json:"gb_type,omitempty"`
 	GBAxis                 string             `json:"gb_axis,omitempty"`
 	GBNormal               string             `json:"gb_normal,omitempty"`
+	Grain1Orientation      string             `json:"grain_1_orientation,omitempty"`
+	Grain2Orientation      string             `json:"grain_2_orientation,omitempty"`
 	GBAngleDeg             float64            `json:"gb_angle_deg,omitempty"`
 	OverlapCutoff          float64            `json:"overlap_cutoff_angstrom,omitempty"`
 	TwinSystem             string             `json:"twin_system,omitempty"`
@@ -215,6 +217,8 @@ func defaults(req *BuildRequest) {
 	if req.GBNormal == "" {
 		req.GBNormal = "[100]"
 	}
+	req.Grain1Orientation = strings.TrimSpace(req.Grain1Orientation)
+	req.Grain2Orientation = strings.TrimSpace(req.Grain2Orientation)
 	if req.GBAngleDeg == 0 {
 		req.GBAngleDeg = 10
 	}
@@ -449,6 +453,31 @@ func parseValueFromSpec(spec, key string, fallback float64) float64 {
 	return fallback
 }
 
+func parseStringFromSpec(spec, key, fallback string) string {
+	spec = strings.ReplaceAll(spec, ";", ",")
+	for _, field := range strings.Split(spec, ",") {
+		field = strings.TrimSpace(field)
+		if !strings.Contains(field, "=") {
+			continue
+		}
+		parts := strings.SplitN(field, "=", 2)
+		if strings.EqualFold(strings.TrimSpace(parts[0]), key) {
+			if v := strings.TrimSpace(parts[1]); v != "" {
+				return v
+			}
+		}
+	}
+	return fallback
+}
+
+func parsedVectorOrZero(spec string) model.Vec3 {
+	v, ok := model.VectorFromSpec(spec)
+	if !ok {
+		return model.Vec3{}
+	}
+	return v
+}
+
 func appDefaultString(v, fallback string) string {
 	if strings.TrimSpace(v) == "" {
 		return fallback
@@ -532,9 +561,16 @@ func phase2BatchModule(module string) bool {
 	}
 }
 
-func exportPhase2SeriesArchive(module string, entries []phase2SeriesEntry) (filename, mime string, content []byte, err error) {
+func exportPhase2SeriesArchive(module, format string, entries []phase2SeriesEntry) (filename, mime string, content []byte, err error) {
 	if len(entries) == 0 {
 		return "", "", nil, errors.New("no structures in series")
+	}
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" || format == "vasp" {
+		format = "poscar"
+	}
+	if format != "poscar" && format != "extxyz" {
+		return "", "", nil, fmt.Errorf("unsupported Phase 2 series format %q", format)
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -546,11 +582,16 @@ func exportPhase2SeriesArchive(module string, entries []phase2SeriesEntry) (file
 			dir = fmt.Sprintf("%s_%03d_lambda%.5f", strings.ReplaceAll(entry.Kind, " ", "_"), entry.Index, entry.Lambda)
 		}
 		path := dir + "/POSCAR"
+		payload := model.ExportPOSCAR(entry.Structure, fmt.Sprintf("Ti Alloy Studio %s geometry %03d", entry.Kind, entry.Index))
+		if format == "extxyz" {
+			path = dir + "/model.extxyz"
+			payload = model.ExportExtXYZ(entry.Structure)
+		}
 		f, e := zw.Create(path)
 		if e != nil {
 			return "", "", nil, e
 		}
-		if _, e = f.Write([]byte(model.ExportPOSCAR(entry.Structure, fmt.Sprintf("Ti Alloy Studio %s geometry %03d", entry.Kind, entry.Index)))); e != nil {
+		if _, e = f.Write([]byte(payload)); e != nil {
 			return "", "", nil, e
 		}
 		pbc := fmt.Sprintf("%t/%t/%t", entry.Structure.PBC[0], entry.Structure.PBC[1], entry.Structure.PBC[2])
@@ -572,7 +613,11 @@ func exportPhase2SeriesArchive(module string, entries []phase2SeriesEntry) (file
 	if e = zw.Close(); e != nil {
 		return "", "", nil, e
 	}
-	return "TiAlloyStudio-Phase2-Geometry-Series-POSCAR.zip", "application/zip", buf.Bytes(), nil
+	label := "POSCAR"
+	if format == "extxyz" {
+		label = "extXYZ"
+	}
+	return "TiAlloyStudio-Phase2-Geometry-Series-" + label + ".zip", "application/zip", buf.Bytes(), nil
 }
 
 func (s *State) Build(in BuildRequest) (BuildResponse, error) {
@@ -669,10 +714,12 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 			return out, err
 		}
 		m, err := model.BuildDislocation(out.Structure, req.Phase, model.DislocationOptions{
-			SlipSystem:  req.SlipSystem,
-			Character:   req.DislocationCharacter,
-			Arrangement: req.DislocationArrangement,
-			CoreRadius:  parseValueFromSpec(req.OperationKind, "core_radius", 0),
+			SlipSystem:    req.SlipSystem,
+			BurgersVector: parsedVectorOrZero(req.BurgersVector),
+			LineDirection: parsedVectorOrZero(req.LineDirection),
+			Character:     req.DislocationCharacter,
+			Arrangement:   req.DislocationArrangement,
+			CoreRadius:    parseValueFromSpec(req.OperationKind, "core_radius", 0),
 		})
 		if err != nil {
 			return out, err
@@ -686,6 +733,12 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		out.Analysis["slip_plane_normal"] = m.SlipSystem.SlipPlaneNormal
 		out.Analysis["burgers_dot_plane_normal"] = model.Dot(m.SlipSystem.BurgersVector, m.SlipSystem.SlipPlaneNormal)
 		out.Analysis["periodic_image_distance_angstrom"] = m.PeriodicImageDistance
+		out.Analysis["dislocation_core_count"] = m.Structure.Meta["dislocation_core_count"]
+		out.Analysis["viewer_helpers"] = map[string]any{
+			"burgers_vector":    m.SlipSystem.BurgersVector,
+			"line_direction":    m.SlipSystem.LineDirection,
+			"slip_plane_normal": m.SlipSystem.SlipPlaneNormal,
+		}
 		out.Analysis["core_region"] = "unrelaxed initial geometry"
 
 	case "grain_boundary":
@@ -700,12 +753,16 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 			Periodic:           !strings.Contains(strings.ToLower(req.SurfacePreset), "vacuum"),
 			OverlapCutoff:      req.OverlapCutoff,
 			TranslationVariant: req.InterfaceCandidate,
+			Grain1Orientation:  req.Grain1Orientation,
+			Grain2Orientation:  req.Grain2Orientation,
 		})
 		if err != nil {
 			return out, err
 		}
 		out.Structure = gb.Structure
 		out.Analysis["grain_boundary_type"] = gb.Type
+		out.Analysis["gb_axis"] = req.GBAxis
+		out.Analysis["gb_normal"] = req.GBNormal
 		out.Analysis["grain_1_orientation"] = gb.Grain1Orientation
 		out.Analysis["grain_2_orientation"] = gb.Grain2Orientation
 		out.Analysis["misorientation_angle_deg"] = gb.MisorientationAngleDeg
@@ -792,8 +849,8 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 			return out, err
 		}
 		crack, err := model.BuildCrack(out.Structure, model.CrackOptions{
-			Plane:   appDefaultString(req.GBNormal, "(010)"),
-			Front:   appDefaultString(req.GBAxis, "[001]"),
+			Plane:   parseStringFromSpec(req.CrackSpec, "plane", appDefaultString(req.GBNormal, "(010)")),
+			Front:   parseStringFromSpec(req.CrackSpec, "front", appDefaultString(req.GBAxis, "[001]")),
 			Length:  parseValueFromSpec(req.CrackSpec, "length", 0),
 			Opening: parseValueFromSpec(req.CrackSpec, "opening", 0),
 			Vacuum:  req.Vacuum,
@@ -946,7 +1003,11 @@ func (s *State) ExportBatch(format string) (filename, mime string, content []byt
 	if cur.Structure.NAtoms() == 0 {
 		return "", "", nil, errors.New("no active model")
 	}
-	if strings.ToLower(format) != "poscar" && strings.ToLower(format) != "vasp" {
+	normalizedFormat := strings.ToLower(strings.TrimSpace(format))
+	if normalizedFormat == "vasp" {
+		normalizedFormat = "poscar"
+	}
+	if normalizedFormat != "poscar" && !(phase2BatchModule(cur.Module) && normalizedFormat == "extxyz") {
 		return "", "", nil, fmt.Errorf("unsupported batch format %q", format)
 	}
 	if phase2BatchModule(cur.Module) {
@@ -954,7 +1015,7 @@ func (s *State) ExportBatch(format string) (filename, mime string, content []byt
 		if e != nil {
 			return "", "", nil, e
 		}
-		return exportPhase2SeriesArchive(cur.Module, entries)
+		return exportPhase2SeriesArchive(cur.Module, normalizedFormat, entries)
 	}
 	switch cur.Module {
 	case "eos":

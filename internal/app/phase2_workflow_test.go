@@ -81,6 +81,122 @@ func TestPhase2BuildUserCreatesModelingOperationsFromTitaniumAlloyBase(t *testin
 	}
 }
 
+func TestPhase2RequestControlsDislocationVectorsCrackPlaneAndTrainingExtXYZ(t *testing.T) {
+	st := NewState()
+	disl, err := st.BuildUser(BuildRequest{
+		Module:                 "dislocation",
+		Phase:                  "beta",
+		NX:                     5,
+		NY:                     5,
+		NZ:                     5,
+		SlipSystem:             "beta_110_111",
+		BurgersVector:          "0 0 2.5",
+		LineDirection:          "0 1 0",
+		DislocationCharacter:   "mixed",
+		DislocationArrangement: "quadrupole",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := disl.Analysis["dislocation_core_count"]; got != 4 {
+		t.Fatalf("analysis core count = %v, want 4", got)
+	}
+	helpers, ok := disl.Analysis["viewer_helpers"].(map[string]any)
+	if !ok || helpers["burgers_vector"] == nil || helpers["line_direction"] == nil || helpers["slip_plane_normal"] == nil {
+		t.Fatalf("3D viewer helper vectors missing: %v", disl.Analysis["viewer_helpers"])
+	}
+	requireGeometryOnlyResponse(t, disl)
+
+	crack, err := st.BuildUser(BuildRequest{
+		Module:    "crack",
+		Phase:     "alpha",
+		NX:        5,
+		NY:        5,
+		NZ:        4,
+		CrackSpec: "plane=(10-10),front=[11-20],length=7,opening=1.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if crack.Analysis["crack_plane"] != "(10-10)" || crack.Analysis["crack_front"] != "[11-20]" {
+		t.Fatalf("crack plane/front did not come from crack_spec: %v", crack.Analysis)
+	}
+	requireGeometryOnlyResponse(t, crack)
+
+	if _, err = st.BuildUser(BuildRequest{Module: "training_set", Phase: "alpha", NX: 3, NY: 3, NZ: 3, SeriesCount: 2, DatasetKind: "nep"}); err != nil {
+		t.Fatal(err)
+	}
+	name, mime, data, err := st.ExportBatch("extxyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(name, ".zip") || mime != "application/zip" {
+		t.Fatalf("training-set export identity = %q %q", name, mime)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	extXYZCount := 0
+	for _, f := range zr.File {
+		if !strings.HasSuffix(f.Name, ".extxyz") {
+			continue
+		}
+		extXYZCount++
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(body, []byte("calculation_state=not_calculated")) {
+			t.Fatalf("%s missing not_calculated metadata:\n%s", f.Name, body)
+		}
+		for _, forbidden := range []string{"energy", "forces", "stress"} {
+			if bytes.Contains(bytes.ToLower(body), []byte(forbidden)) {
+				t.Fatalf("%s contains calculated field %q:\n%s", f.Name, forbidden, body)
+			}
+		}
+	}
+	if extXYZCount != 5 {
+		t.Fatalf("extXYZ file count = %d, want 5", extXYZCount)
+	}
+}
+
+func TestPhase2RequestControlsGrainBoundaryOrientation(t *testing.T) {
+	st := NewState()
+	gb, err := st.BuildUser(BuildRequest{
+		Module:            "grain_boundary",
+		Phase:             "beta",
+		NX:                5,
+		NY:                5,
+		NZ:                5,
+		GBType:            "general",
+		GBAxis:            "[010]",
+		GBNormal:          "[010]",
+		GBAngleDeg:        20,
+		SurfacePreset:     "vacuum",
+		Grain1Orientation: "1 0 0; 0 1 0; 0 0 1",
+		Grain2Orientation: "0 -1 0; 1 0 0; 0 0 1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gb.Analysis["gb_axis"] != "[010]" || gb.Analysis["gb_normal"] != "[010]" {
+		t.Fatalf("GB axis/normal diagnostics missing: %v", gb.Analysis)
+	}
+	if got, _ := gb.Analysis["in_plane_periodic_matching_mismatch_percent"].(float64); got <= 0 {
+		t.Fatalf("GB mismatch diagnostic = %.6g, want positive for rotated grains", got)
+	}
+	if got, _ := gb.Analysis["interface_count"].(int); got != 1 {
+		t.Fatalf("interface_count = %v, want 1 for vacuum bicrystal", gb.Analysis["interface_count"])
+	}
+	requireGeometryOnlyResponse(t, gb)
+}
+
 func TestPhase2SeriesExportArchiveContainsManifestAndNoCalculatedFields(t *testing.T) {
 	st := NewState()
 	if _, err := st.BuildUser(BuildRequest{

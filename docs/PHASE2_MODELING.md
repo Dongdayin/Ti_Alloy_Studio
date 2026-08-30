@@ -14,7 +14,8 @@ Phase 2 keeps Ti Alloy Studio as a titanium-alloy modeling workstation. It does 
 ## Added Phase 2 model classes
 
 - Dislocation initial geometries: first-pass α basal/prismatic/pyramidal and β `{110}<111>` / `{112}<111>` presets.
-- Grain-boundary bicrystals: tilt, twist, and general-bicrystal UI fields with orientation and overlap diagnostics.
+- Dislocation precision controls: optional user-entered Burgers vector and line direction override the preset geometry, and the 3D viewer draws helper arrows for Burgers vector, line direction, and slip-plane normal.
+- Grain-boundary bicrystals: tilt, twist, and general-bicrystal UI fields with GB axis, GB normal, optional grain orientation matrices, topology, overlap-removal, and mismatch diagnostics.
 - Stacking-fault and gamma-surface geometry series: displacement structures only.
 - Twin geometries: first-pass α twin presets with parent/twin labels.
 - Local chemistry: SRO-like distributions, segregation, solute clusters, vacancy-solute style clusters, and simplified precipitate inclusions as composition/label operations.
@@ -40,10 +41,10 @@ Single-structure export uses the native Save As dialog and returns the saved pat
 Series workflows export a ZIP package with:
 
 - `manifest.csv`
-- one POSCAR per structure
+- one POSCAR per structure, or extXYZ files for training configuration sets when selected
 - `README.txt`
 
-The manifest records only geometry-series fields such as index, kind, λ, shift vector, atom count, PBC, and path.
+The manifest records only geometry-series fields such as index, kind, λ, shift vector, atom count, PBC, and path. Training extXYZ headers keep `scientific_state=not_relaxed` and `calculation_state=not_calculated`; they do not contain artificial energy, force, or stress values.
 
 ## Tachyon direction
 

@@ -125,7 +125,18 @@ func ExportExtXYZ(s Structure) string {
 			fmt.Fprintf(&b, "%.16g", s.Cell[i][j])
 		}
 	}
-	fmt.Fprintf(&b, "\" Properties=species:S:1:pos:R:3 pbc=\"")
+	fmt.Fprintf(&b, "\" Properties=species:S:1:pos:R:3")
+	for _, key := range []string{"scientific_state", "calculation_state", "model_kind", "dataset_kind", "dataset_name"} {
+		if value, ok := s.Meta[key]; ok {
+			text := strings.ReplaceAll(fmt.Sprint(value), `"`, `'`)
+			if strings.ContainsAny(text, " \t\r\n") {
+				fmt.Fprintf(&b, " %s=\"%s\"", key, text)
+			} else {
+				fmt.Fprintf(&b, " %s=%s", key, text)
+			}
+		}
+	}
+	fmt.Fprintf(&b, " pbc=\"")
 	for i, p := range s.PBC {
 		if i > 0 {
 			b.WriteByte(' ')

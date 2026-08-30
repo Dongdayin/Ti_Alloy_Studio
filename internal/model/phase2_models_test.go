@@ -66,6 +66,34 @@ func TestDislocationModelRecordsSlipGeometryAndCoreLabels(t *testing.T) {
 	requireNoCalculatedQuantities(t, model.Structure)
 }
 
+func TestDislocationModelUsesCustomVectorsAndCreatesPeriodicCoreSets(t *testing.T) {
+	host := BuildBetaTi(3.306).Repeat(6, 6, 6)
+	disl, err := BuildDislocation(host, "beta", DislocationOptions{
+		SlipSystem:    "beta_110_111",
+		BurgersVector: Vec3{0, 0, 2.5},
+		LineDirection: Vec3{0, 1, 0},
+		Character:     "mixed",
+		Arrangement:   "quadrupole",
+		CoreRadius:    2.4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := disl.SlipSystem.BurgersVector; math.Abs(got[2]-2.5) > 1e-12 || math.Abs(got[0]) > 1e-12 || math.Abs(got[1]) > 1e-12 {
+		t.Fatalf("custom Burgers vector was not used: %+v", got)
+	}
+	if got := disl.SlipSystem.LineDirection; math.Abs(got[1]-1) > 1e-12 || math.Abs(got[0]) > 1e-12 || math.Abs(got[2]) > 1e-12 {
+		t.Fatalf("custom line direction was not normalized and used: %+v", got)
+	}
+	if got, ok := disl.Structure.Meta["dislocation_core_count"].(int); !ok || got != 4 {
+		t.Fatalf("quadrupole core count = %v, want 4", disl.Structure.Meta["dislocation_core_count"])
+	}
+	if countLabel(disl.Structure.SiteLabels, "dislocation_core") == 0 {
+		t.Fatal("quadrupole dislocation did not label any core atoms")
+	}
+	requireNoCalculatedQuantities(t, disl.Structure)
+}
+
 func TestGrainBoundaryModelLabelsBothGrainsAndRecordsMismatch(t *testing.T) {
 	host := BuildBetaTi(3.306).Repeat(5, 5, 5)
 	gb, err := BuildGrainBoundary(host, GrainBoundaryOptions{
@@ -83,7 +111,7 @@ func TestGrainBoundaryModelLabelsBothGrainsAndRecordsMismatch(t *testing.T) {
 	if countLabel(gb.Structure.SiteLabels, "grain_1") == 0 || countLabel(gb.Structure.SiteLabels, "grain_2") == 0 {
 		t.Fatalf("grain labels are incomplete: %v", gb.Structure.SiteLabels)
 	}
-	if gb.MisorientationAngleDeg != 12.5 {
+	if math.Abs(gb.MisorientationAngleDeg-12.5) > 1e-9 {
 		t.Fatalf("misorientation = %.6g, want 12.5", gb.MisorientationAngleDeg)
 	}
 	if gb.InterfaceCount != 2 {
@@ -94,6 +122,36 @@ func TestGrainBoundaryModelLabelsBothGrainsAndRecordsMismatch(t *testing.T) {
 	}
 	if _, ok := gb.Structure.Meta["removed_overlap_atom_count"].(int); !ok {
 		t.Fatal("removed_overlap_atom_count diagnostic missing")
+	}
+	requireNoCalculatedQuantities(t, gb.Structure)
+}
+
+func TestGrainBoundaryUsesRequestedAxisNormalAndOrientationMatrices(t *testing.T) {
+	host := BuildBetaTi(3.306).Repeat(5, 5, 5)
+	gb, err := BuildGrainBoundary(host, GrainBoundaryOptions{
+		Type:              "general",
+		Axis:              "[010]",
+		Normal:            "[010]",
+		AngleDeg:          20,
+		Periodic:          false,
+		OverlapCutoff:     0.5,
+		Grain1Orientation: "1 0 0; 0 1 0; 0 0 1",
+		Grain2Orientation: "0 -1 0; 1 0 0; 0 0 1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(gb.GBPlaneNormal[1]-1) > 1e-12 || math.Abs(gb.GBPlaneNormal[0]) > 1e-12 || math.Abs(gb.GBPlaneNormal[2]) > 1e-12 {
+		t.Fatalf("GB normal did not use requested [010]: %+v", gb.GBPlaneNormal)
+	}
+	if gb.InterfaceCount != 1 || gb.Structure.PBC[1] {
+		t.Fatalf("vacuum bicrystal topology did not follow the requested GB normal: interface_count=%d pbc=%v", gb.InterfaceCount, gb.Structure.PBC)
+	}
+	if gb.InPlaneMismatchPercent <= 0 {
+		t.Fatalf("orientation mismatch diagnostic was not computed: %.6g", gb.InPlaneMismatchPercent)
+	}
+	if math.Abs(gb.Grain2Orientation[0][1]+1) > 1e-12 || math.Abs(gb.Grain2Orientation[1][0]-1) > 1e-12 {
+		t.Fatalf("grain 2 orientation matrix not preserved: %+v", gb.Grain2Orientation)
 	}
 	requireNoCalculatedQuantities(t, gb.Structure)
 }

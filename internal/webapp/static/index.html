@@ -211,6 +211,14 @@
             </select>
           </label>
         </div>
+        <div class="double">
+          <label>Burgers vector（可空）
+            <input id="burgersVector" value="" placeholder="例如 0 0 2.5 或 [11-20]" spellcheck="false">
+          </label>
+          <label>线方向（可空）
+            <input id="lineDirection" value="" placeholder="例如 0 1 0 或 [0001]" spellcheck="false">
+          </label>
+        </div>
         <label>核心标记半径 Å<input id="dislocationCoreRadius" type="number" value="3.0" step="0.1"></label>
         <p class="micro">只生成 Volterra 初始几何和核心区域标签；不判断核心能量或收敛。</p>
       </div>
@@ -232,6 +240,12 @@
           <label>错配角 °<input id="gbAngleDeg" type="number" value="10" step="0.1"></label>
           <label>重叠删除距离 Å<input id="overlapCutoff" type="number" value="1.2" step="0.1"></label>
         </div>
+        <label>晶粒 1 取向矩阵（可空）
+          <input id="grain1Orientation" value="" placeholder="1 0 0; 0 1 0; 0 0 1" spellcheck="false">
+        </label>
+        <label>晶粒 2 取向矩阵（可空）
+          <input id="grain2Orientation" value="" placeholder="0 -1 0; 1 0 0; 0 0 1" spellcheck="false">
+        </label>
         <label>拓扑
           <select id="gbTopology">
             <option value="periodic">周期双晶胞</option>
@@ -276,6 +290,10 @@
 
       <div id="crackControls" class="conditional">
         <h3>3. 裂纹参数</h3>
+        <div class="double">
+          <label>裂纹面<input id="crackPlane" value="(010)" spellcheck="false"></label>
+          <label>裂纹前缘<input id="crackFront" value="[001]" spellcheck="false"></label>
+        </div>
         <label>裂纹设定<input id="crackSpec" value="plane=(010),front=[001],length=8,opening=1.2" spellcheck="false"></label>
         <p class="micro">生成 notch/crack plane/front 初始结构和区域标签，不做断裂计算。</p>
       </div>
@@ -312,6 +330,12 @@
           </label>
           <label>构型数<input id="datasetCount" type="number" value="4" min="1"></label>
         </div>
+        <label>训练集导出格式
+          <select id="trainingExportFormat">
+            <option value="extxyz">extXYZ 构型包</option>
+            <option value="poscar">POSCAR 构型包</option>
+          </select>
+        </label>
         <p class="micro">打包结构与标签；不填假能量、假力或假应力。</p>
       </div>
 

@@ -145,18 +145,20 @@
       orientation_preset: $('interfaceOrientationPreset')?.value || '',
       slip_system: $('slipSystem')?.value || '',
       burgers_vector: $('burgersVector')?.value || '',
-      line_direction: $('dislocationCharacter')?.value || '',
+      line_direction: $('lineDirection')?.value || '',
       dislocation_character: $('dislocationCharacter')?.value || '',
       dislocation_arrangement: $('dislocationArrangement')?.value || '',
       gb_type: $('gbType')?.value || '',
       gb_axis: $('gbAxis')?.value || '',
       gb_normal: $('gbNormal')?.value || '',
+      grain_1_orientation: $('grain1Orientation')?.value || '',
+      grain_2_orientation: $('grain2Orientation')?.value || '',
       gb_angle_deg: num('gbAngleDeg'),
       overlap_cutoff_angstrom: num('overlapCutoff'),
       twin_system: $('twinSystem')?.value || '',
       cluster_spec: $('clusterSpec')?.value || '',
       precipitate_spec: $('precipitateSpec')?.value || '',
-      crack_spec: $('crackSpec')?.value || '',
+      crack_spec: `plane=${$('crackPlane')?.value || '(010)'},front=${$('crackFront')?.value || '[001]'},${$('crackSpec')?.value || ''}`,
       indenter_spec: $('indenterSpec')?.value || '',
       grain_count: num('grainCount'),
       series_count: seriesCountValue(module),
@@ -505,6 +507,80 @@
     return [x, y, z];
   }
 
+  function helperVector(value) {
+    if (Array.isArray(value) && value.length >= 3) {
+      return [Number(value[0]) || 0, Number(value[1]) || 0, Number(value[2]) || 0];
+    }
+    return null;
+  }
+
+  function unitVector(v) {
+    const n = Math.hypot(v[0], v[1], v[2]);
+    return n > 1e-12 ? v.map((x) => x / n) : null;
+  }
+
+  function drawArrow(ctx, from, to, color, label) {
+    const dx = to[0] - from[0];
+    const dy = to[1] - from[1];
+    const angle = Math.atan2(dy, dx);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(from[0], from[1]);
+    ctx.lineTo(to[0], to[1]);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(to[0], to[1]);
+    ctx.lineTo(to[0] - 10 * Math.cos(angle - Math.PI / 7), to[1] - 10 * Math.sin(angle - Math.PI / 7));
+    ctx.lineTo(to[0] - 10 * Math.cos(angle + Math.PI / 7), to[1] - 10 * Math.sin(angle + Math.PI / 7));
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText(label, to[0] + 6, to[1] - 6);
+    ctx.restore();
+  }
+
+  function drawDirectionHelpers(ctx, w, h, center, baseScale, extent) {
+    const helpers = model?.analysis?.viewer_helpers;
+    if (!helpers) return;
+    const burgers = unitVector(helperVector(helpers.burgers_vector) || []);
+    const line = unitVector(helperVector(helpers.line_direction) || []);
+    const normal = unitVector(helperVector(helpers.slip_plane_normal) || []);
+    if (!burgers || !line || !normal) return;
+
+    const project = (v, length = 1) => {
+      const r = rotatedPoint([v[0] * length, v[1] * length, v[2] * length]);
+      return [w / 2 + panX + r[0] * baseScale, h / 2 + panY - r[1] * baseScale];
+    };
+    const origin = project([0, 0, 0]);
+    const len = Math.max(0.12 * extent, 2.5);
+    const bEnd = project(burgers, len);
+    const lEnd = project(line, len);
+    const nEnd = project(normal, len * 0.75);
+
+    ctx.save();
+    ctx.globalAlpha = 0.17;
+    ctx.fillStyle = '#2563eb';
+    const p1 = project([burgers[0] + line[0], burgers[1] + line[1], burgers[2] + line[2]], len * 0.55);
+    const p2 = project([burgers[0] - line[0], burgers[1] - line[1], burgers[2] - line[2]], len * 0.55);
+    const p3 = project([-burgers[0] - line[0], -burgers[1] - line[1], -burgers[2] - line[2]], len * 0.55);
+    const p4 = project([-burgers[0] + line[0], -burgers[1] + line[1], -burgers[2] + line[2]], len * 0.55);
+    ctx.beginPath();
+    ctx.moveTo(p1[0], p1[1]);
+    ctx.lineTo(p2[0], p2[1]);
+    ctx.lineTo(p3[0], p3[1]);
+    ctx.lineTo(p4[0], p4[1]);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    drawArrow(ctx, origin, bEnd, '#dc2626', 'b');
+    drawArrow(ctx, origin, lEnd, '#059669', 'line');
+    drawArrow(ctx, origin, nEnd, '#7c3aed', 'n');
+  }
+
   function draw3d() {
     if (!model) return;
     const cv = $('structureCanvas');
@@ -535,6 +611,8 @@
     const extent = Math.max(...max.map((v, i) => v - min[i]), 1);
     const baseScale = 0.72 * Math.min(w, h) / extent * zoom;
     const radius = Number($('atomRadius')?.value || 5);
+
+    drawDirectionHelpers(ctx, w, h, center, baseScale, extent);
 
     cv._pts = positions.map((p, i) => {
       const r = rotatedPoint(p.map((v, k) => v - center[k]));
@@ -1168,12 +1246,15 @@
       toast('当前模型不是构型系列；请选择层错、NEB 或训练构型集。');
       return;
     }
+    const format = model.module === 'training_set'
+      ? ($('trainingExportFormat')?.value || 'extxyz')
+      : 'poscar';
     try {
       const response = await fetch('/api/export-batch/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          format: 'poscar',
+          format,
           suggested_name: 'TiAlloyStudio-Phase2-Geometry-Series.zip'
         })
       });
