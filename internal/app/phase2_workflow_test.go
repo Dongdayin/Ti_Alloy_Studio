@@ -28,6 +28,94 @@ func requireGeometryOnlyResponse(t *testing.T, res BuildResponse) {
 	}
 }
 
+func TestBuildUserDefaultsToFastValidationWithoutEngineCrossCheck(t *testing.T) {
+	st := NewState()
+	res, err := st.BuildUser(BuildRequest{
+		Module:        "crystal",
+		Phase:         "alpha",
+		NX:            4,
+		NY:            4,
+		NZ:            6,
+		CompositionWt: map[string]float64{"Al": 6, "V": 4},
+		Seed:          91,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Validation.Checks) == 0 {
+		t.Fatal("fast validation did not run structural checks")
+	}
+	if len(res.Engines) != 0 {
+		t.Fatalf("default GUI build ran external engine cross-checks: %+v", res.Engines)
+	}
+	if got := res.Analysis["validation_mode"]; got != "fast" {
+		t.Fatalf("validation_mode = %v, want fast", got)
+	}
+	if got := res.Analysis["engine_check_status"]; got != "skipped" {
+		t.Fatalf("engine_check_status = %v, want skipped", got)
+	}
+}
+
+func TestBuildUserDeepValidationRunsEngineCrossCheck(t *testing.T) {
+	st := NewState()
+	res, err := st.BuildUser(BuildRequest{
+		Module:         "crystal",
+		Phase:          "alpha",
+		NX:             1,
+		NY:             1,
+		NZ:             1,
+		ValidationMode: "deep",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Engines) != 2 {
+		t.Fatalf("deep validation engine report count = %d, want 2", len(res.Engines))
+	}
+	if got := res.Analysis["validation_mode"]; got != "deep" {
+		t.Fatalf("validation_mode = %v, want deep", got)
+	}
+	if got := res.Analysis["engine_check_status"]; got != "completed" {
+		t.Fatalf("engine_check_status = %v, want completed", got)
+	}
+}
+
+func TestTrainingSetConfigurationCountEqualsRequestedCount(t *testing.T) {
+	st := NewState()
+	res, err := st.BuildUser(BuildRequest{
+		Module:      "training_set",
+		Phase:       "alpha",
+		NX:          3,
+		NY:          3,
+		NZ:          3,
+		SeriesCount: 4,
+		DatasetKind: "nep",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Analysis["configuration_count"]; got != 4 {
+		t.Fatalf("configuration_count = %v, want 4", got)
+	}
+	name, _, data, err := st.ExportBatch("extxyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	extXYZCount := 0
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".extxyz") {
+			extXYZCount++
+		}
+	}
+	if extXYZCount != 4 {
+		t.Fatalf("%s contains %d extXYZ files, want 4", name, extXYZCount)
+	}
+}
+
 func TestPhase2BuildUserCreatesModelingOperationsFromTitaniumAlloyBase(t *testing.T) {
 	st := NewState()
 	req := BuildRequest{
@@ -161,8 +249,8 @@ func TestPhase2RequestControlsDislocationVectorsCrackPlaneAndTrainingExtXYZ(t *t
 			}
 		}
 	}
-	if extXYZCount != 5 {
-		t.Fatalf("extXYZ file count = %d, want 5", extXYZCount)
+	if extXYZCount != 2 {
+		t.Fatalf("extXYZ file count = %d, want 2", extXYZCount)
 	}
 }
 

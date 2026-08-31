@@ -65,6 +65,8 @@ func newHandlerWithNativeHooks(state *app.State, hooks nativeHooks) http.Handler
 	mux.HandleFunc("/api/export/save", a.exportSave)
 	mux.HandleFunc("/api/export-batch", a.exportBatch)
 	mux.HandleFunc("/api/export-batch/save", a.exportBatchSave)
+	mux.HandleFunc("/api/calculation-package", a.calculationPackage)
+	mux.HandleFunc("/api/calculation-package/save", a.calculationPackageSave)
 	mux.HandleFunc("/api/environment", a.environment)
 	mux.HandleFunc("/api/capabilities", a.capabilities)
 	mux.HandleFunc("/api/connectors", a.connectors)
@@ -87,7 +89,7 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":     "Ti Alloy Studio",
-		"version":  "0.3.0-phase2-r2",
+		"version":  "0.4.0-phase3-r1",
 		"engine":   "TiModelCore Native + bundled Atomsk/ASE/spglib/pymatgen/AtomMan validation",
 		"platform": "Windows x64 standalone offline structure modeling; no WSL or local solver required",
 	})
@@ -185,6 +187,47 @@ func (a *api) exportBatchSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, mime, content, err := a.state.ExportBatch(req.Format)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	suggested := strings.TrimSpace(req.SuggestedName)
+	if suggested == "" {
+		suggested = name
+	}
+	a.saveBytes(w, saveFileRequest{Format: "zip", SuggestedName: suggested, MIME: mime}, content)
+}
+
+func (a *api) calculationPackage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	name, mime, content, err := a.state.ExportCalculationPackage(r.URL.Query().Get("target"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
+func (a *api) calculationPackageSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Target        string `json:"target"`
+		SuggestedName string `json:"suggested_name"`
+	}
+	if err := decodeStrictJSON(w, r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	name, mime, content, err := a.state.ExportCalculationPackage(req.Target)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

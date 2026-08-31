@@ -122,7 +122,7 @@ func manualFile(w http.ResponseWriter) {
 
 func runEngineSmoke(path string) int {
 	st := app.NewState()
-	r, err := st.Build(app.BuildRequest{Module: "crystal", Phase: "alpha", NX: 2, NY: 2, NZ: 2})
+	r, err := st.Build(app.BuildRequest{Module: "crystal", Phase: "alpha", NX: 2, NY: 2, NZ: 2, ValidationMode: "deep"})
 	payload := map[string]any{"status": "PASS", "engines": r.Engines}
 	if err != nil {
 		payload["status"] = "FAIL"

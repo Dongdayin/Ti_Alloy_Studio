@@ -74,6 +74,9 @@ func TestWorkbenchExposesPhase2PrecisionControlsAndViewerHelpers(t *testing.T) {
 		`id="crackPlane"`,
 		`id="crackFront"`,
 		`id="trainingExportFormat"`,
+		`id="validationMode"`,
+		`id="calculationPackageTarget"`,
+		`id="calculationPackageBtn"`,
 	} {
 		if !strings.Contains(page, needle) {
 			t.Fatalf("precision Phase 2 UI control missing %q", needle)
@@ -89,6 +92,8 @@ func TestWorkbenchExposesPhase2PrecisionControlsAndViewerHelpers(t *testing.T) {
 		"grain_1_orientation",
 		"grain_2_orientation",
 		"trainingExportFormat",
+		"validation_mode",
+		"/api/calculation-package/save",
 	} {
 		if !strings.Contains(appJS, needle) {
 			t.Fatalf("precision Phase 2 behavior missing %q", needle)

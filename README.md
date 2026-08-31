@@ -1,6 +1,6 @@
 # Ti Alloy Studio — titanium alloy modeler
 
-Ti Alloy Studio 0.3.0 Phase 2 R2 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, and export workbench.
+Ti Alloy Studio 0.4.0 Phase 3 R1 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
 
 This release is deliberately modeling-only. It creates titanium-alloy structure files for later use in VASP, LAMMPS, GPUMD, NEP training, and other workflows, but it does not run those calculations. A normal user installs one offline package and does not configure Python, Conda, WSL, Atomsk, ATAT, or `PATH`.
 
@@ -15,6 +15,9 @@ This release is deliberately modeling-only. It creates titanium-alloy structure 
 7. Select any historical structure record without rebuilding it.
 8. Restore that structure's recipe and generate an edited child.
 9. Save all structure records as one `.tias-project` package and reopen it on another computer with the same software release.
+10. Phase 3 can export calculation-input preparation packages for VASP, LAMMPS, and GPUMD/NEP from the active model.
+
+Interactive builds default to fast validation: Ti Alloy Studio runs internal structural checks and skips the slower Atomsk/ASE cross-check. The advanced validation selector can be switched to deep validation for release, delivery, or troubleshooting runs.
 
 Each successful revision stores its explicit parent, normalized recipe, exact structure, validation and engine evidence, scientific state, and export SHA-256 hashes. A failed build, derivation, or project import leaves the active revision and history unchanged.
 
@@ -43,6 +46,10 @@ Generated structures are labeled `not_relaxed` and `not_calculated`. The softwar
 
 POSCAR, LAMMPS data, and extended-XYZ exports are file formats, not evidence that the corresponding solver was run.
 
+Training configuration sets are seed structures for later external labeling. The requested configuration count is the exact number of exported structures. The first structure is the selected base geometry; additional structures use deterministic small strain and rattle perturbations and remain `not_calculated`.
+
+Phase 3 calculation packages contain structures and editable input templates only. They do not include VASP/LAMMPS/GPUMD outputs, potentials, pseudopotentials, or calculated labels.
+
 ## Development verification
 
 ```powershell
@@ -52,4 +59,4 @@ go vet ./...
 
 The Windows release gate additionally verifies installation to a path containing spaces, the private Python/Atomsk payload, native and mature-engine smoke tests, revision edit plus historical re-export, `.tias-project` save/reopen, preservation of a pre-existing system Python, uninstall registration, real uninstall, and release SHA-256 files.
 
-See `docs/TiAlloyStudio-Manual.docx` for the Phase 1 scientific methods and the interface guide. See `docs/superpowers/specs/2026-08-27-standalone-modeling-revisions-responsive-ui-design.md` for the standalone revision redesign.
+See `docs/TiAlloyStudio-Manual.docx` for the Phase 1 scientific methods and the interface guide. See `docs/PHASE2_MODELING.md` and `docs/PHASE3_COMPUTATIONAL_WORKSTATION.md` for the current modeling and calculation-preparation scopes.

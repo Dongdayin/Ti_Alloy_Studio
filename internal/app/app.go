@@ -3,6 +3,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -69,6 +70,7 @@ type BuildRequest struct {
 	GrainCount             int                `json:"grain_count,omitempty"`
 	SeriesCount            int                `json:"series_count,omitempty"`
 	DatasetKind            string             `json:"dataset_kind,omitempty"`
+	ValidationMode         string             `json:"validation_mode,omitempty"`
 }
 
 type BuildResponse struct {
@@ -238,6 +240,33 @@ func defaults(req *BuildRequest) {
 	if req.DatasetKind == "" {
 		req.DatasetKind = "nep"
 	}
+	req.ValidationMode = normalizeValidationMode(req.ValidationMode)
+}
+
+func normalizeValidationMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "deep", "engine", "engines", "full", "release":
+		return "deep"
+	default:
+		return "fast"
+	}
+}
+
+func finalizeValidation(out *BuildResponse, mode string) {
+	out.Validation = model.ValidateStructure(out.Structure)
+	moduleValidation(out)
+	if out.Analysis == nil {
+		out.Analysis = map[string]any{}
+	}
+	normalized := normalizeValidationMode(mode)
+	out.Analysis["validation_mode"] = normalized
+	if normalized == "deep" {
+		out.Engines = engines.CrossCheck(out.Structure)
+		out.Analysis["engine_check_status"] = "completed"
+		return
+	}
+	out.Engines = nil
+	out.Analysis["engine_check_status"] = "skipped"
 }
 
 func buildBase(req BuildRequest) (model.Structure, error) {
@@ -533,14 +562,7 @@ func phase2SeriesForRequest(req BuildRequest) ([]phase2SeriesEntry, error) {
 		}
 		return out, nil
 	case "training_set":
-		neb, err := model.GenerateNEBSeries(host, model.NEBOptions{MovingSite: 0, Images: req.SeriesCount})
-		if err != nil {
-			return nil, err
-		}
-		structures := []model.Structure{host}
-		for _, p := range neb.Points {
-			structures = append(structures, p.Structure)
-		}
+		structures := model.GenerateTrainingCandidates(host, model.TrainingCandidateOptions{Count: req.SeriesCount, Seed: req.Seed})
 		dataset := model.BuildTrainingSet(structures, model.DatasetOptions{Kind: req.DatasetKind, Name: "TiAlloyStudio-phase2"})
 		out := make([]phase2SeriesEntry, 0, len(dataset.Structures))
 		for i, s := range dataset.Structures {
@@ -919,14 +941,7 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		if err := buildConfiguredHost(req, &out); err != nil {
 			return out, err
 		}
-		series, err := model.GenerateNEBSeries(out.Structure, model.NEBOptions{MovingSite: 0, Images: req.SeriesCount})
-		if err != nil {
-			return out, err
-		}
-		structures := []model.Structure{out.Structure}
-		for _, p := range series.Points {
-			structures = append(structures, p.Structure)
-		}
+		structures := model.GenerateTrainingCandidates(out.Structure, model.TrainingCandidateOptions{Count: req.SeriesCount, Seed: req.Seed})
 		dataset := model.BuildTrainingSet(structures, model.DatasetOptions{Kind: req.DatasetKind, Name: "TiAlloyStudio-phase2"})
 		out.Structure = dataset.Structures[0]
 		out.Analysis["dataset_kind"] = dataset.Kind
@@ -985,9 +1000,7 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		return out, fmt.Errorf("unsupported module %q", out.Module)
 	}
 
-	out.Validation = model.ValidateStructure(out.Structure)
-	moduleValidation(&out)
-	out.Engines = engines.CrossCheck(out.Structure)
+	finalizeValidation(&out, req.ValidationMode)
 	s.mu.Lock()
 	s.Current = out
 	s.CurrentRequest = req
@@ -1115,6 +1128,71 @@ func (s *State) Export(format string) (filename, mime, content string, err error
 	return exportStructure(cur.Structure, format)
 }
 
+func (s *State) ExportCalculationPackage(target string) (filename, mime string, content []byte, err error) {
+	target = strings.ToLower(strings.TrimSpace(target))
+	if target == "" {
+		target = "vasp"
+	}
+	if target != "vasp" && target != "lammps" && target != "gpumd" && target != "all" {
+		return "", "", nil, fmt.Errorf("unsupported calculation package target %q", target)
+	}
+	s.mu.RLock()
+	cur := cloneBuildResponse(s.Current)
+	req := s.CurrentRequest
+	s.mu.RUnlock()
+	if cur.Structure.NAtoms() == 0 {
+		return "", "", nil, errors.New("no active model")
+	}
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	if err = writeZipText(zw, "README.txt", calculationPackageREADME(target)); err != nil {
+		return "", "", nil, err
+	}
+	manifest := map[string]any{
+		"package_kind":      "calculation_input_preparation",
+		"target":            target,
+		"module":            cur.Module,
+		"phase":             req.Phase,
+		"atom_count":        cur.Structure.NAtoms(),
+		"structure_sha256":  structureSHA256(cur.Structure),
+		"scientific_state":  "not_relaxed",
+		"calculation_state": "not_calculated",
+		"generated_by":      "Ti Alloy Studio",
+		"notes": []string{
+			"This package contains input structures and editable templates only.",
+			"No external solver was run by Ti Alloy Studio for this package.",
+			"Add licensed binaries, potentials, pseudopotentials, and convergence settings outside Ti Alloy Studio before production use.",
+		},
+	}
+	manifestBytes, e := json.MarshalIndent(manifest, "", "  ")
+	if e != nil {
+		return "", "", nil, e
+	}
+	if err = writeZipText(zw, "manifest.json", string(manifestBytes)+"\n"); err != nil {
+		return "", "", nil, err
+	}
+	if target == "vasp" || target == "all" {
+		if err = writeVASPInputPackage(zw, cur.Structure); err != nil {
+			return "", "", nil, err
+		}
+	}
+	if target == "lammps" || target == "all" {
+		if err = writeLAMMPSInputPackage(zw, cur.Structure); err != nil {
+			return "", "", nil, err
+		}
+	}
+	if target == "gpumd" || target == "all" {
+		if err = writeGPUMDInputPackage(zw, cur.Structure); err != nil {
+			return "", "", nil, err
+		}
+	}
+	if err = zw.Close(); err != nil {
+		return "", "", nil, err
+	}
+	return "TiAlloyStudio-Phase3-Calculation-Input-" + strings.ToUpper(target) + ".zip", "application/zip", buf.Bytes(), nil
+}
+
 // ExportRevision exports an immutable historical snapshot without changing
 // the active revision or appending project history.
 func (s *State) ExportRevision(id, format string) (filename, mime, content string, err error) {
@@ -1146,6 +1224,43 @@ func exportStructure(structure model.Structure, format string) (filename, mime, 
 	default:
 		return "", "", "", fmt.Errorf("unsupported export format %q", format)
 	}
+}
+
+func writeZipText(zw *zip.Writer, name, text string) error {
+	f, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write([]byte(text))
+	return err
+}
+
+func calculationPackageREADME(target string) string {
+	return fmt.Sprintf("Ti Alloy Studio Phase 3 calculation-input package\r\nTarget: %s\r\nState: not_relaxed / not_calculated\r\n\r\nThis package prepares structures and editable solver templates from the current titanium-alloy model. It is not a finished calculation and contains no solver results.\r\n\r\nBefore production use, add the required licensed executables, potentials or pseudopotentials, numerical settings, and cluster/job scripts for your own environment.\r\n", target)
+}
+
+func writeVASPInputPackage(zw *zip.Writer, s model.Structure) error {
+	if err := writeZipText(zw, "vasp/POSCAR", model.ExportPOSCAR(s, "Ti Alloy Studio Phase 3 input geometry")); err != nil {
+		return err
+	}
+	if err := writeZipText(zw, "vasp/INCAR.template", "SYSTEM = Ti Alloy Studio geometry input\nENCUT = <set-for-your-POTCAR>\nISMEAR = <set>\nSIGMA = <set>\nIBRION = <set>\nNSW = <set>\nISIF = <set>\nLWAVE = .FALSE.\nLCHARG = .FALSE.\n"); err != nil {
+		return err
+	}
+	return writeZipText(zw, "vasp/KPOINTS.template", "KPOINTS template generated by Ti Alloy Studio\n0\nGamma\n<kx> <ky> <kz>\n0 0 0\n")
+}
+
+func writeLAMMPSInputPackage(zw *zip.Writer, s model.Structure) error {
+	if err := writeZipText(zw, "lammps/model.data", model.ExportLAMMPS(s)); err != nil {
+		return err
+	}
+	return writeZipText(zw, "lammps/in.lammps.template", "units metal\natom_style atomic\nboundary p p p\nread_data model.data\n\npair_style <choose-potential-style>\npair_coeff <choose-potential-file-and-elements>\n\nneighbor 2.0 bin\nneigh_modify delay 5\n\n# Add minimization, dynamics, or loading commands only after selecting a validated potential.\n")
+}
+
+func writeGPUMDInputPackage(zw *zip.Writer, s model.Structure) error {
+	if err := writeZipText(zw, "gpumd/model.extxyz", model.ExportExtXYZ(s)); err != nil {
+		return err
+	}
+	return writeZipText(zw, "gpumd/run.in.template", "potential <your-nep-potential.txt>\n# Add GPUMD ensemble and run commands after choosing a validated potential and target workflow.\n")
 }
 
 func addCheck(r *model.ValidationReport, name, status, message string, value float64) {

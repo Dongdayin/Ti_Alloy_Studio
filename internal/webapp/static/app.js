@@ -24,7 +24,9 @@
   const excludedAnalysisMetrics = new Set([
     'seed',
     'selected_index',
-    'interface_equivalence_assumed'
+    'interface_equivalence_assumed',
+    'validation_mode',
+    'engine_check_status'
   ]);
 
   let active = 'random';
@@ -162,7 +164,8 @@
       indenter_spec: $('indenterSpec')?.value || '',
       grain_count: num('grainCount'),
       series_count: seriesCountValue(module),
-      dataset_kind: $('datasetKind')?.value || ''
+      dataset_kind: $('datasetKind')?.value || '',
+      validation_mode: $('validationMode')?.value || 'fast'
     };
   }
 
@@ -1268,6 +1271,31 @@
     }
   }
 
+  async function saveCalculationPackage() {
+    if (!model) {
+      toast('请先生成模型');
+      return;
+    }
+    const target = $('calculationPackageTarget')?.value || 'vasp';
+    try {
+      const response = await fetch('/api/calculation-package/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target,
+          suggested_name: `TiAlloyStudio-Phase3-Calculation-Input-${target.toUpperCase()}.zip`
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw Error(payload.error || '计算输入包导出失败');
+      if (payload.cancelled) return;
+      showExportResult(payload);
+      toast('计算输入包已保存');
+    } catch (error) {
+      toast(error.message);
+    }
+  }
+
   async function openExportFolder() {
     if (!lastExportPath) {
       toast('还没有导出的文件');
@@ -1418,6 +1446,7 @@
       : toast('请先生成模型');
   });
   $('seriesPackageBtn')?.addEventListener('click', saveSeriesPackage);
+  $('calculationPackageBtn')?.addEventListener('click', saveCalculationPackage);
   $('openExportFolderBtn')?.addEventListener('click', openExportFolder);
   $('manualBtn').onclick = () => downloadBlob('/manual', 'TiAlloyStudio-Manual.docx');
 	$('refreshCapabilities').onclick = refreshCapabilities;

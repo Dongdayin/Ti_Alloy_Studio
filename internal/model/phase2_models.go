@@ -162,6 +162,13 @@ type DatasetOptions struct {
 	Name string
 }
 
+type TrainingCandidateOptions struct {
+	Count              int
+	Seed               int64
+	MaxRattleAngstrom  float64
+	MaxStrainMagnitude float64
+}
+
 type TrainingSet struct {
 	Kind       string      `json:"kind"`
 	Name       string      `json:"name"`
@@ -942,6 +949,56 @@ func GenerateNEBSeries(host Structure, opts NEBOptions) (NEBSeries, error) {
 		out.Points = append(out.Points, NEBPoint{Index: i, Lambda: lam, Structure: s})
 	}
 	return out, nil
+}
+
+func GenerateTrainingCandidates(host Structure, opts TrainingCandidateOptions) []Structure {
+	count := opts.Count
+	if count < 1 {
+		count = 1
+	}
+	rattle := opts.MaxRattleAngstrom
+	if rattle <= 0 {
+		rattle = 0.025
+	}
+	strain := opts.MaxStrainMagnitude
+	if strain <= 0 {
+		strain = 0.015
+	}
+	baseFrac := host.Fractional(true)
+	out := make([]Structure, 0, count)
+	for i := 0; i < count; i++ {
+		s := copyStructure(host)
+		variant := "base"
+		if i > 0 {
+			amp := float64((i%7)-3) / 3 * strain
+			shear := float64(((i*2)%5)-2) / 2 * strain * 0.4
+			cell := s.Cell
+			cell[0] = VScale(host.Cell[0], 1+amp)
+			cell[1] = VAdd(VScale(host.Cell[1], 1-0.5*amp), VScale(host.Cell[0], shear))
+			cell[2] = VScale(host.Cell[2], 1+0.25*amp)
+			s.Cell = cell
+			rng := rand.New(rand.NewSource(opts.Seed + int64(i)*7919))
+			for site, f := range baseFrac {
+				p := FracToCart(f, cell)
+				disp := Vec3{
+					(rng.Float64()*2 - 1) * rattle,
+					(rng.Float64()*2 - 1) * rattle,
+					(rng.Float64()*2 - 1) * rattle,
+				}
+				s.Positions[site] = VAdd(p, disp)
+			}
+			variant = "strained_rattled"
+		}
+		markGeometryOnly(&s, "training_configuration")
+		s.Meta["operation"] = "training_set_candidate"
+		s.Meta["training_candidate_index"] = i
+		s.Meta["training_variant"] = variant
+		s.Meta["random_seed"] = opts.Seed
+		s.Meta["max_rattle_angstrom"] = rattle
+		s.Meta["max_strain_magnitude"] = strain
+		out = append(out, s)
+	}
+	return out
 }
 
 func BuildTrainingSet(structures []Structure, opts DatasetOptions) TrainingSet {

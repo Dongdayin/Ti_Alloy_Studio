@@ -59,3 +59,51 @@ func TestBatchExportSaveAsWritesPhase2SeriesArchiveAndReportsPath(t *testing.T) 
 		t.Fatal("saved archive does not contain manifest.csv")
 	}
 }
+
+func TestCalculationPackageSaveAsWritesPhase3InputArchiveAndReportsPath(t *testing.T) {
+	state := app.NewState()
+	if _, err := state.BuildUser(app.BuildRequest{Module: "random", Phase: "beta", NX: 3, NY: 3, NZ: 3, CompositionWt: map[string]float64{"Mo": 8}, Seed: 7}); err != nil {
+		t.Fatal(err)
+	}
+	selectedPath := filepath.Join(t.TempDir(), "phase3-inputs.zip")
+	h := newHandlerWithNativeHooks(state, nativeHooks{
+		saveFile: func(req saveFileRequest) (string, bool, error) {
+			if req.Format != "zip" {
+				t.Fatalf("save dialog format=%q, want zip", req.Format)
+			}
+			if !strings.Contains(req.SuggestedName, "Phase3") {
+				t.Fatalf("suggested name = %q, want Phase3 calculation package name", req.SuggestedName)
+			}
+			return selectedPath, false, nil
+		},
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/calculation-package/save", bytes.NewBufferString(`{"target":"all"}`))
+	r.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("save calculation package status=%d body=%s", w.Code, w.Body.String())
+	}
+	var out struct {
+		Saved  bool   `json:"saved"`
+		Path   string `json:"path"`
+		Bytes  int64  `json:"bytes"`
+		SHA256 string `json:"sha256"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Saved || out.Path != selectedPath || out.Bytes == 0 || out.SHA256 == "" {
+		t.Fatalf("unexpected save response: %+v", out)
+	}
+	data, err := os.ReadFile(selectedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range [][]byte{[]byte("manifest.json"), []byte("vasp/POSCAR"), []byte("lammps/model.data"), []byte("gpumd/model.extxyz")} {
+		if !bytes.Contains(data, want) {
+			t.Fatalf("saved calculation package missing %s", want)
+		}
+	}
+}

@@ -36,7 +36,7 @@ details{border-top:1px dashed #e0e4e9;margin-top:8px;padding-top:7px}
 .panelHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex:0 0 auto}
 .panelHead span{font-size:10px;color:var(--muted)}
 .viewerToolbar{display:flex;align-items:center;gap:6px;margin:5px 0 7px;flex-wrap:wrap;flex:0 0 auto}
-.connectorDetails button,.energyBox button,.exportGrid button,.revisionActions button,.viewerToolbar button{border:1px solid #c9d2de;background:#f8fafc;border-radius:5px;padding:7px 9px;cursor:pointer;color:#344256}
+.calculationPackage button,.connectorDetails button,.energyBox button,.exportGrid button,.revisionActions button,.viewerToolbar button{border:1px solid #c9d2de;background:#f8fafc;border-radius:5px;padding:7px 9px;cursor:pointer;color:#344256}
 .radiusControl{margin:0;display:flex;flex-direction:row;align-items:center;gap:6px}
 .radiusControl input{width:90px;padding:0}
 .canvasWrap{position:relative;flex:1 1 auto;height:0;min-height:180px;overflow:hidden}
@@ -74,6 +74,7 @@ details{border-top:1px dashed #e0e4e9;margin-top:8px;padding-top:7px}
 .diagnosticActions{margin-top:8px}
 .exportGrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .exportGrid .wide{grid-column:1/-1;font-weight:600}
+.calculationPackage button{width:100%}
 .exportResult{margin-top:8px;padding:8px;border:1px solid #cfe0f6;background:#f4f8ff;border-radius:6px;font-size:11px;line-height:1.45;color:#233247;overflow-wrap:anywhere}
 #openExportFolderBtn{margin-top:7px;border:1px solid #c9d2de;background:#f8fafc;border-radius:5px;padding:7px 9px;cursor:pointer;color:#344256;width:100%}
 .legend{display:flex;flex-wrap:wrap;gap:7px}

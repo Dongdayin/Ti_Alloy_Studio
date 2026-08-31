@@ -11,6 +11,8 @@ Phase 2 keeps Ti Alloy Studio as a titanium-alloy modeling workstation. It does 
 5. Inspect geometry, validation diagnostics, region labels, and composition.
 6. Export one structure or a geometry-series ZIP package.
 
+The default GUI/API validation mode is `fast`: internal structure validation runs immediately, while bundled Atomsk/ASE cross-checks are skipped to keep repeated modeling interactive. `deep` validation is still available from the advanced check selector and remains mandatory in release smoke tests.
+
 ## Added Phase 2 model classes
 
 - Dislocation initial geometries: first-pass α basal/prismatic/pyramidal and β `{110}<111>` / `{112}<111>` presets.
@@ -21,7 +23,7 @@ Phase 2 keeps Ti Alloy Studio as a titanium-alloy modeling workstation. It does 
 - Local chemistry: SRO-like distributions, segregation, solute clusters, vacancy-solute style clusters, and simplified precipitate inclusions as composition/label operations.
 - Mechanical seed geometries: crack/notch, nanoindentation substrate plus indenter reference, and Voronoi polycrystal labels.
 - NEB geometry sets: initial/final and interpolated structures only.
-- Training configuration sets: extXYZ/POSCAR-ready structures tagged for later external labeling.
+- Training configuration sets: extXYZ/POSCAR-ready structures tagged for later external labeling. The requested count is exact; the first entry is the base structure and later entries are deterministic small-strain/small-rattle geometry candidates, not NEB images.
 
 ## Scientific semantics
 

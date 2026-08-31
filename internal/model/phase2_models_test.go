@@ -277,6 +277,20 @@ func TestMechanicalAndDatasetBuildersEmitLabeledGeometryOnlyStructures(t *testin
 		requireNoCalculatedQuantities(t, point.Structure)
 	}
 
+	candidates := GenerateTrainingCandidates(host, TrainingCandidateOptions{Count: 4, Seed: 17})
+	if len(candidates) != 4 {
+		t.Fatalf("training candidates = %d, want 4", len(candidates))
+	}
+	if candidates[0].NAtoms() != host.NAtoms() || candidates[3].NAtoms() != host.NAtoms() {
+		t.Fatalf("training candidates changed atom count: host=%d first=%d last=%d", host.NAtoms(), candidates[0].NAtoms(), candidates[3].NAtoms())
+	}
+	if candidates[0].Meta["training_variant"] != "base" || candidates[3].Meta["training_variant"] == "neb_image" {
+		t.Fatalf("training candidate semantics not explicit: first=%v last=%v", candidates[0].Meta["training_variant"], candidates[3].Meta["training_variant"])
+	}
+	for _, s := range candidates {
+		requireNoCalculatedQuantities(t, s)
+	}
+
 	dataset := BuildTrainingSet([]Structure{crack.Structure, indent.Structure, poly.Structure}, DatasetOptions{Kind: "nep", Name: "phase2"})
 	if dataset.Kind != "nep" || len(dataset.Structures) != 3 {
 		t.Fatalf("dataset = kind %q structures %d, want nep/3", dataset.Kind, len(dataset.Structures))

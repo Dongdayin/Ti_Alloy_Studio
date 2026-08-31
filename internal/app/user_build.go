@@ -5,7 +5,6 @@ import (
 	"math"
 	"strings"
 
-	"tialloystudio/internal/engines"
 	"tialloystudio/internal/model"
 )
 
@@ -52,11 +51,9 @@ func (s *State) BuildUser(req BuildRequest) (BuildResponse, error) {
 		out.Analysis["interface_equivalence_assumed"] = false
 
 		// The topology changed after the low-level slab construction; validation
-		// and independent-engine cross-checks must therefore be recomputed on the
-		// actual structure that will be shown/exported.
-		out.Validation = model.ValidateStructure(out.Structure)
-		moduleValidation(&out)
-		out.Engines = engines.CrossCheck(out.Structure)
+		// must therefore be recomputed on the actual structure that will be
+		// shown/exported, while preserving the selected fast/deep validation mode.
+		finalizeValidation(&out, normalized.ValidationMode)
 		addCheck(&out.Validation, "interface_topology", "PASS", "Fully periodic alpha/beta bicrystal with two interfaces and no vacuum/free surface", float64(metrics.InterfaceCount))
 		if out.Structure.PBC == [3]bool{true, true, true} {
 			addCheck(&out.Validation, "interface_periodic_pbc", "PASS", "Periodic bicrystal is periodic in all three lattice directions", 3)

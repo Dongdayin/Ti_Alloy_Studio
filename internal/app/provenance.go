@@ -418,9 +418,8 @@ func (s *State) DeriveRevision(parentID string, change DeriveRequest) (BuildResp
 	if operation == "substitution" {
 		out.Analysis["new_species"] = req.NewSpecies
 	}
-	out.Validation = model.ValidateStructure(out.Structure)
-	moduleValidation(&out)
-	out.Engines = engines.CrossCheck(out.Structure)
+	req.ValidationMode = normalizeValidationMode(req.ValidationMode)
+	finalizeValidation(&out, req.ValidationMode)
 
 	s.mu.Lock()
 	s.Current = cloneBuildResponse(out)

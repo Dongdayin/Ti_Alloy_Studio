@@ -339,6 +339,17 @@
         <p class="micro">打包结构与标签；不填假能量、假力或假应力。</p>
       </div>
 
+      <details class="advancedValidation">
+        <summary>高级检查（发布/交付前使用）</summary>
+        <label>验证模式
+          <select id="validationMode">
+            <option value="fast" selected>快速建模 · 只做结构检查</option>
+            <option value="deep">深度验证 · 加跑内置 Atomsk / ASE</option>
+          </select>
+        </label>
+        <p class="micro">反复调参数时用快速建模；最终导出或排查安装组件时再切换深度验证。</p>
+      </details>
+
       <button id="buildBtn" class="primary">生成并检查模型</button>
     </section>
   </aside>
@@ -449,6 +460,19 @@
         <button data-export="cif">CIF</button>
         <button id="seriesPackageBtn" class="wide" type="button">构型系列包 ZIP</button>
       </div>
+      <details class="calculationPackage">
+        <summary>第三阶段：计算输入包</summary>
+        <label>目标软件
+          <select id="calculationPackageTarget">
+            <option value="vasp">VASP 输入模板</option>
+            <option value="lammps">LAMMPS 输入模板</option>
+            <option value="gpumd">GPUMD / NEP 输入模板</option>
+            <option value="all">全部格式</option>
+          </select>
+        </label>
+        <button id="calculationPackageBtn" type="button">保存计算输入包 ZIP</button>
+        <p class="micro">只准备结构和模板，不运行求解器，不包含能量、力或应力结果。</p>
+      </details>
       <div id="exportResult" class="exportResult" hidden></div>
       <button id="openExportFolderBtn" type="button" hidden>打开导出文件夹</button>
       <p id="exportHint" class="micro">导出当前显示结构。保存完成后会显示文件名、大小和 SHA-256。</p>
