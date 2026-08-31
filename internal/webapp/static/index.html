@@ -470,6 +470,71 @@
             <option value="all">全部格式</option>
           </select>
         </label>
+        <label>工作流预设
+          <select id="calculationWorkflowPreset">
+            <option value="structure_only">仅结构与模板</option>
+            <option value="relaxation">结构弛豫输入</option>
+            <option value="static">静态单点输入</option>
+            <option value="md_seed">MD 初始输入</option>
+            <option value="defect">缺陷模型输入</option>
+            <option value="interface">界面模型输入</option>
+            <option value="neb_seed">NEB 初末态输入</option>
+            <option value="nep_labeling_seed">NEP 标注种子</option>
+          </select>
+        </label>
+        <details class="templateOptions">
+          <summary>VASP 模板参数</summary>
+          <div class="double">
+            <label>KPOINTS
+              <input id="vaspKpoints" value="3 3 3" placeholder="例如 4 4 4">
+            </label>
+            <label>ENCUT eV
+              <input id="vaspEncut" type="number" min="0" step="10" value="520">
+            </label>
+          </div>
+          <div class="triple">
+            <label>ISMEAR
+              <input id="vaspIsmear" type="number" step="1" value="1">
+            </label>
+            <label>SIGMA
+              <input id="vaspSigma" type="number" min="0" step="0.01" value="0.2">
+            </label>
+            <label>EDIFF
+              <input id="vaspEdiff" value="1e-5">
+            </label>
+          </div>
+          <p class="micro">不会写 POTCAR；赝势和收敛参数由用户在外部计算环境确认。</p>
+        </details>
+        <details class="templateOptions">
+          <summary>LAMMPS 模板参数</summary>
+          <label>pair_style
+            <input id="lammpsPairStyle" value="eam/alloy">
+          </label>
+          <label>pair_coeff
+            <input id="lammpsPairCoeff" value="* * your-potential.eam.alloy Ti Al V">
+          </label>
+          <label>可选 run 步数
+            <input id="lammpsRunSteps" type="number" min="0" step="100" value="0">
+          </label>
+        </details>
+        <details class="templateOptions">
+          <summary>GPUMD / NEP 模板参数</summary>
+          <div class="triple">
+            <label>系综
+              <select id="gpumdEnsemble">
+                <option value="nvt">NVT</option>
+                <option value="nve">NVE</option>
+                <option value="npt">NPT</option>
+              </select>
+            </label>
+            <label>温度 K
+              <input id="gpumdTemperature" type="number" min="1" step="10" value="300">
+            </label>
+            <label>run 步数
+              <input id="gpumdRunSteps" type="number" min="0" step="1000" value="0">
+            </label>
+          </div>
+        </details>
         <button id="calculationPackageBtn" type="button">保存计算输入包 ZIP</button>
         <p class="micro">只准备结构和模板，不运行求解器，不包含能量、力或应力结果。</p>
       </details>

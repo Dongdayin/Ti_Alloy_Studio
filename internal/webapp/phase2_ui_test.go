@@ -76,6 +76,13 @@ func TestWorkbenchExposesPhase2PrecisionControlsAndViewerHelpers(t *testing.T) {
 		`id="trainingExportFormat"`,
 		`id="validationMode"`,
 		`id="calculationPackageTarget"`,
+		`id="calculationWorkflowPreset"`,
+		`id="vaspKpoints"`,
+		`id="vaspEncut"`,
+		`id="lammpsPairStyle"`,
+		`id="lammpsPairCoeff"`,
+		`id="gpumdEnsemble"`,
+		`id="gpumdRunSteps"`,
 		`id="calculationPackageBtn"`,
 	} {
 		if !strings.Contains(page, needle) {
@@ -94,6 +101,11 @@ func TestWorkbenchExposesPhase2PrecisionControlsAndViewerHelpers(t *testing.T) {
 		"trainingExportFormat",
 		"validation_mode",
 		"/api/calculation-package/save",
+		"workflow_preset",
+		"vasp_kpoints",
+		"vasp_encut_ev",
+		"lammps_pair_style",
+		"gpumd_ensemble",
 	} {
 		if !strings.Contains(appJS, needle) {
 			t.Fatalf("precision Phase 2 behavior missing %q", needle)

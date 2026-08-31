@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -89,7 +90,7 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":     "Ti Alloy Studio",
-		"version":  "0.4.0-phase3-r1",
+		"version":  "0.4.1-phase3-r2",
 		"engine":   "TiModelCore Native + bundled Atomsk/ASE/spglib/pymatgen/AtomMan validation",
 		"platform": "Windows x64 standalone offline structure modeling; no WSL or local solver required",
 	})
@@ -203,7 +204,12 @@ func (a *api) calculationPackage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	name, mime, content, err := a.state.ExportCalculationPackage(r.URL.Query().Get("target"))
+	req, err := calculationPackageRequestFromQuery(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	name, mime, content, err := a.state.ExportCalculationPackageWithOptions(req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -220,14 +226,14 @@ func (a *api) calculationPackageSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Target        string `json:"target"`
+		app.CalculationPackageRequest
 		SuggestedName string `json:"suggested_name"`
 	}
 	if err := decodeStrictJSON(w, r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	name, mime, content, err := a.state.ExportCalculationPackage(req.Target)
+	name, mime, content, err := a.state.ExportCalculationPackageWithOptions(req.CalculationPackageRequest)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -237,6 +243,63 @@ func (a *api) calculationPackageSave(w http.ResponseWriter, r *http.Request) {
 		suggested = name
 	}
 	a.saveBytes(w, saveFileRequest{Format: "zip", SuggestedName: suggested, MIME: mime}, content)
+}
+
+func calculationPackageRequestFromQuery(r *http.Request) (app.CalculationPackageRequest, error) {
+	q := r.URL.Query()
+	req := app.CalculationPackageRequest{
+		Target:          q.Get("target"),
+		WorkflowPreset:  q.Get("workflow_preset"),
+		VASPKPoints:     q.Get("vasp_kpoints"),
+		VASPEDIFF:       q.Get("vasp_ediff"),
+		LAMMPSPairStyle: q.Get("lammps_pair_style"),
+		LAMMPSPairCoeff: q.Get("lammps_pair_coeff"),
+		GPUMDEnsemble:   q.Get("gpumd_ensemble"),
+	}
+	var err error
+	if req.VASPENCUTeV, err = optionalQueryInt(q.Get("vasp_encut_ev"), "vasp_encut_ev"); err != nil {
+		return app.CalculationPackageRequest{}, err
+	}
+	if req.VASPISMEAR, err = optionalQueryInt(q.Get("vasp_ismear"), "vasp_ismear"); err != nil {
+		return app.CalculationPackageRequest{}, err
+	}
+	if req.LAMMPSRunSteps, err = optionalQueryInt(q.Get("lammps_run_steps"), "lammps_run_steps"); err != nil {
+		return app.CalculationPackageRequest{}, err
+	}
+	if req.GPUMDRunSteps, err = optionalQueryInt(q.Get("gpumd_run_steps"), "gpumd_run_steps"); err != nil {
+		return app.CalculationPackageRequest{}, err
+	}
+	if req.VASPSigma, err = optionalQueryFloat(q.Get("vasp_sigma"), "vasp_sigma"); err != nil {
+		return app.CalculationPackageRequest{}, err
+	}
+	if req.GPUMDTemperatureK, err = optionalQueryFloat(q.Get("gpumd_temperature_k"), "gpumd_temperature_k"); err != nil {
+		return app.CalculationPackageRequest{}, err
+	}
+	return req, nil
+}
+
+func optionalQueryInt(raw, field string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer", field)
+	}
+	return value, nil
+}
+
+func optionalQueryFloat(raw, field string) (float64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a number", field)
+	}
+	return value, nil
 }
 
 func (a *api) projectSave(w http.ResponseWriter, r *http.Request) {

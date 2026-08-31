@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -106,4 +108,77 @@ func TestCalculationPackageSaveAsWritesPhase3InputArchiveAndReportsPath(t *testi
 			t.Fatalf("saved calculation package missing %s", want)
 		}
 	}
+}
+
+func TestCalculationPackageSaveAsAcceptsPhase3PresetOptions(t *testing.T) {
+	state := app.NewState()
+	if _, err := state.BuildUser(app.BuildRequest{Module: "random", Phase: "alpha", NX: 3, NY: 3, NZ: 3, CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 17}); err != nil {
+		t.Fatal(err)
+	}
+	selectedPath := filepath.Join(t.TempDir(), "phase3-static-v.vasp.zip")
+	h := newHandlerWithNativeHooks(state, nativeHooks{
+		saveFile: func(req saveFileRequest) (string, bool, error) {
+			if !strings.Contains(req.SuggestedName, "Phase3") {
+				t.Fatalf("suggested name = %q, want Phase3 package name", req.SuggestedName)
+			}
+			return selectedPath, false, nil
+		},
+	})
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/api/calculation-package/save", bytes.NewBufferString(`{
+		"target":"vasp",
+		"workflow_preset":"static",
+		"vasp_kpoints":"5 5 3",
+		"vasp_encut_ev":450,
+		"vasp_ismear":1,
+		"vasp_sigma":0.15,
+		"vasp_ediff":"1e-6"
+	}`))
+	r.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("save calculation package status=%d body=%s", w.Code, w.Body.String())
+	}
+	data, err := os.ReadFile(selectedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := readHTTPZipTextMembers(t, data)
+	for _, check := range []struct {
+		name string
+		want string
+	}{
+		{"manifest.json", `"workflow_preset": "static"`},
+		{"manifest.json", `"vasp_kpoints": "5 5 3"`},
+		{"vasp/INCAR.template", "ENCUT = 450"},
+		{"vasp/INCAR.template", "EDIFF = 1e-6"},
+		{"vasp/KPOINTS.template", "5 5 3"},
+	} {
+		if !strings.Contains(contents[check.name], check.want) {
+			t.Fatalf("%s missing %q:\n%s", check.name, check.want, contents[check.name])
+		}
+	}
+}
+
+func readHTTPZipTextMembers(t *testing.T, data []byte) map[string]string {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := map[string]string{}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		contents[f.Name] = string(body)
+	}
+	return contents
 }

@@ -75,6 +75,8 @@ details{border-top:1px dashed #e0e4e9;margin-top:8px;padding-top:7px}
 .exportGrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
 .exportGrid .wide{grid-column:1/-1;font-weight:600}
 .calculationPackage button{width:100%}
+.templateOptions{background:#f8fafc;border:1px solid #e4eaf1;border-radius:6px;margin:8px 0;padding:8px}
+.templateOptions>summary{font-size:11px;color:#445365;font-weight:600;cursor:pointer}
 .exportResult{margin-top:8px;padding:8px;border:1px solid #cfe0f6;background:#f4f8ff;border-radius:6px;font-size:11px;line-height:1.45;color:#233247;overflow-wrap:anywhere}
 #openExportFolderBtn{margin-top:7px;border:1px solid #c9d2de;background:#f8fafc;border-radius:5px;padding:7px 9px;cursor:pointer;color:#344256;width:100%}
 .legend{display:flex;flex-wrap:wrap;gap:7px}

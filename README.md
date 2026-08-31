@@ -1,6 +1,6 @@
 # Ti Alloy Studio — titanium alloy modeler
 
-Ti Alloy Studio 0.4.0 Phase 3 R1 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
+Ti Alloy Studio 0.4.1 Phase 3 R2 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
 
 This release is deliberately modeling-only. It creates titanium-alloy structure files for later use in VASP, LAMMPS, GPUMD, NEP training, and other workflows, but it does not run those calculations. A normal user installs one offline package and does not configure Python, Conda, WSL, Atomsk, ATAT, or `PATH`.
 
@@ -15,7 +15,7 @@ This release is deliberately modeling-only. It creates titanium-alloy structure 
 7. Select any historical structure record without rebuilding it.
 8. Restore that structure's recipe and generate an edited child.
 9. Save all structure records as one `.tias-project` package and reopen it on another computer with the same software release.
-10. Phase 3 can export calculation-input preparation packages for VASP, LAMMPS, and GPUMD/NEP from the active model.
+10. Phase 3 can export parameterized calculation-input preparation packages for VASP, LAMMPS, and GPUMD/NEP from the active model.
 
 Interactive builds default to fast validation: Ti Alloy Studio runs internal structural checks and skips the slower Atomsk/ASE cross-check. The advanced validation selector can be switched to deep validation for release, delivery, or troubleshooting runs.
 
@@ -48,7 +48,7 @@ POSCAR, LAMMPS data, and extended-XYZ exports are file formats, not evidence tha
 
 Training configuration sets are seed structures for later external labeling. The requested configuration count is the exact number of exported structures. The first structure is the selected base geometry; additional structures use deterministic small strain and rattle perturbations and remain `not_calculated`.
 
-Phase 3 calculation packages contain structures and editable input templates only. They do not include VASP/LAMMPS/GPUMD outputs, potentials, pseudopotentials, or calculated labels.
+Phase 3 calculation packages contain structures, workflow presets, user-selected template parameters, and editable input templates only. They do not include VASP/LAMMPS/GPUMD outputs, potentials, pseudopotentials, or calculated labels.
 
 ## Development verification
 

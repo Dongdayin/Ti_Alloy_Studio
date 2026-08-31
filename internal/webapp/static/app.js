@@ -48,6 +48,7 @@
     const element = $(id);
     return element ? Number(element.value) || 0 : 0;
   };
+  const val = (id) => ($(id)?.value || '').trim();
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;',
     '<': '&lt;',
@@ -1283,7 +1284,19 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target,
-          suggested_name: `TiAlloyStudio-Phase3-Calculation-Input-${target.toUpperCase()}.zip`
+          workflow_preset: $('calculationWorkflowPreset')?.value || 'structure_only',
+          vasp_kpoints: val('vaspKpoints'),
+          vasp_encut_ev: num('vaspEncut'),
+          vasp_ismear: num('vaspIsmear'),
+          vasp_sigma: num('vaspSigma'),
+          vasp_ediff: val('vaspEdiff'),
+          lammps_pair_style: val('lammpsPairStyle'),
+          lammps_pair_coeff: val('lammpsPairCoeff'),
+          lammps_run_steps: num('lammpsRunSteps'),
+          gpumd_ensemble: $('gpumdEnsemble')?.value || 'nvt',
+          gpumd_temperature_k: num('gpumdTemperature'),
+          gpumd_run_steps: num('gpumdRunSteps'),
+          suggested_name: `TiAlloyStudio-Phase3-R2-${target.toUpperCase()}-Inputs.zip`
         })
       });
       const payload = await response.json();

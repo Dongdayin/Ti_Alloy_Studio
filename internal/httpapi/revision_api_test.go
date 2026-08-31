@@ -97,7 +97,7 @@ func TestCapabilitiesAPIUsesBundledCatalogWithoutAutomaticConnectorProbe(t *test
 	}
 }
 
-func TestInfoReportsPhase2ModelingOnlyRelease(t *testing.T) {
+func TestInfoReportsPhase3R2Release(t *testing.T) {
 	h := NewHandler(app.NewState())
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/info", nil))
@@ -105,9 +105,9 @@ func TestInfoReportsPhase2ModelingOnlyRelease(t *testing.T) {
 		t.Fatalf("info status=%d body=%s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	for _, want := range []string{`"version":"0.4.0-phase3-r1"`, "standalone offline structure modeling", "no WSL or local solver required"} {
+	for _, want := range []string{`"version":"0.4.1-phase3-r2"`, "standalone offline structure modeling", "no WSL or local solver required"} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("phase 2 info response missing %q: %s", want, body)
+			t.Fatalf("phase 3 info response missing %q: %s", want, body)
 		}
 	}
 }

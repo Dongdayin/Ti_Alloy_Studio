@@ -11,9 +11,9 @@ Every structure entering a Phase 3 package remains:
 - `scientific_state = not_relaxed`
 - `calculation_state = not_calculated`
 
-## First implemented slice
+## Implemented slices
 
-The first Phase 3 slice exports a calculation-input package ZIP from the active model.
+R1 exported a calculation-input package ZIP from the active model.
 
 Supported targets:
 
@@ -22,13 +22,20 @@ Supported targets:
 - GPUMD / NEP: `model.extxyz`, `run.in.template`
 - All formats in one package
 
+R2 makes these packages parameterized. The user can select a workflow preset and set template-level parameters before saving:
+
+- workflow preset: structure only, relaxation, static single point, MD seed, defect, interface, NEB seed, or NEP labeling seed
+- VASP: KPOINTS, ENCUT, ISMEAR, SIGMA, EDIFF
+- LAMMPS: pair style, pair coefficient line, optional run steps
+- GPUMD / NEP: ensemble, temperature, optional run steps
+
 Every package includes:
 
 - `manifest.json`
 - `README.txt`
 - one or more solver-specific input folders
 
-The manifest records the package target, source model module, phase, atom count, structure SHA-256, and `not_calculated` semantics.
+The manifest records the package target, workflow preset, source model module, phase, atom count, structure SHA-256, template parameters, and `not_calculated` semantics.
 
 ## Next Phase 3 increments
 
