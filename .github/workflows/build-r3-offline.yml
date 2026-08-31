@@ -1,4 +1,4 @@
-name: Build Phase 2 Offline Windows Installer
+name: Build Phase 3 Offline Windows Installer
 
 on:
   workflow_dispatch:
@@ -205,7 +205,7 @@ jobs:
           $lines | Set-Content -Encoding ascii dist\SHA256SUMS.txt
           Get-Content dist\SHA256SUMS.txt
 
-      - name: Write Phase 2 kickoff acceptance report
+      - name: Write Phase 3 R1 acceptance report
         shell: pwsh
         run: |
           $native=Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json" -Raw | ConvertFrom-Json
@@ -216,7 +216,7 @@ jobs:
             $engineLines += "- $($e.name): $($e.status) — $($e.version)"
           }
           $report=@"
-          # Ti Alloy Studio — Phase 2 Kickoff Acceptance Report
+          # Ti Alloy Studio — Phase 3 R1 Acceptance Report
 
           ## Release identity
 
@@ -261,23 +261,23 @@ jobs:
           $($hashes -join "`n")
           ```
 
-          ## Phase 2 boundary
+          ## Phase 3 R1 boundary
 
-          Phase 2 starts from the standalone titanium-alloy modeling workflow: choose Ti alloy type, composition, crystal structure, lattice constants and supercell first, then optionally add defects, surfaces, or alpha/beta interfaces. The normal workflow requires no WSL or locally installed solver. The application remains modeling-only; long-running VASP/LAMMPS/GPUMD calculations, EOS fitting, GSFE energy calculations, NEP training/active learning, dislocation dynamics, polycrystal generation, cracks, nanoindentation, and shock workflows are outside this kickoff release.
+          Phase 3 R1 prepares downstream calculation input packages from verified titanium-alloy structures. It can package VASP, LAMMPS and GPUMD/NEP starter inputs, but it does not run solvers, fit EOS curves, calculate GSFE energies, train NEP models, or invent energies, forces or stresses. All exported structures remain explicitly not_relaxed and not_calculated until an external calculation produces real results.
           "@
-          $report | Set-Content -LiteralPath 'dist\Phase2-Kickoff-Acceptance-Report.md' -Encoding utf8
-          Get-Content 'dist\Phase2-Kickoff-Acceptance-Report.md'
+          $report | Set-Content -LiteralPath 'dist\Phase3-R1-Acceptance-Report.md' -Encoding utf8
+          Get-Content 'dist\Phase3-R1-Acceptance-Report.md'
 
       - name: Upload offline release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TiAlloyStudio-Phase2-Offline-Windows-x64
+          name: TiAlloyStudio-Phase3-R1-Offline-Windows-x64
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
           path: |
             dist/TiAlloyStudio-Setup-x64-Offline.exe
             dist/SHA256SUMS.txt
-            dist/Phase2-Kickoff-Acceptance-Report.md
+            dist/Phase3-R1-Acceptance-Report.md
             docs/TiAlloyStudio-Manual.docx
             internal/installer/payload/THIRD_PARTY_NOTICES.txt
