@@ -95,6 +95,46 @@ func TestBuildUserTargetSizeHundredAngstromCompletesWithFastValidation(t *testin
 	}
 }
 
+func TestBuildUserSQSTargetSizeHundredAngstromCompletes(t *testing.T) {
+	st := NewState()
+	done := make(chan BuildResponse, 1)
+	errs := make(chan error, 1)
+	go func() {
+		res, err := st.BuildUser(BuildRequest{
+			Module:        "sqs",
+			Phase:         "alpha",
+			TargetX:       100,
+			TargetY:       100,
+			TargetZ:       100,
+			CompositionWt: map[string]float64{"Al": 6, "V": 4},
+			SQSShells:     2,
+			SQSSteps:      2,
+			Seed:          27,
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- res
+	}()
+	select {
+	case err := <-errs:
+		t.Fatal(err)
+	case res := <-done:
+		if got := res.Structure.NAtoms(); got != 50864 {
+			t.Fatalf("100 Å SQS target-size build produced %d atoms, want 50864", got)
+		}
+		if res.SQS == nil {
+			t.Fatal("large SQS build did not return SQS diagnostics")
+		}
+		if res.Validation.Status != "PASS" {
+			t.Fatalf("large SQS validation = %s: %+v", res.Validation.Status, res.Validation.Checks)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("100 Å SQS target-size build did not finish; large-model SQS shell search must avoid all-pairs scans")
+	}
+}
+
 func TestBuildUserDeepValidationRunsEngineCrossCheck(t *testing.T) {
 	st := NewState()
 	res, err := st.BuildUser(BuildRequest{

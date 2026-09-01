@@ -84,3 +84,32 @@ func TestLargeRepeatedStructureMinimumDistanceCompletes(t *testing.T) {
 		t.Fatal("large target-size structure minimum-distance validation did not finish quickly")
 	}
 }
+
+func TestLargeRepeatedStructurePairShellsComplete(t *testing.T) {
+	s := BuildAlphaTi(2.951, 4.684).Repeat(34, 34, 22)
+	done := make(chan []pairShell, 1)
+	errs := make(chan error, 1)
+	go func() {
+		shells, err := buildPairShells(s, 2, 1e-5)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- shells
+	}()
+	select {
+	case err := <-errs:
+		t.Fatal(err)
+	case shells := <-done:
+		if len(shells) != 2 {
+			t.Fatalf("shell count = %d, want 2", len(shells))
+		}
+		for _, shell := range shells {
+			if len(shell.pairs) < s.NAtoms() {
+				t.Fatalf("large pair shell %d has too few pairs: %d", shell.index, len(shell.pairs))
+			}
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("large target-size SQS neighbor-shell search did not finish quickly")
+	}
+}

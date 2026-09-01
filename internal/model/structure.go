@@ -173,7 +173,7 @@ func minimumDistanceCellList(frac []Vec3, cell Mat3, pbc [3]bool, searchRadius f
 			if binCount[a] > len(frac) {
 				binCount[a] = len(frac)
 			}
-			neighborBins[a] = int(math.Ceil((searchRadius/axisLength)*float64(binCount[a]))) + 1
+			neighborBins[a] = int(math.Ceil((searchRadius / axisLength) * float64(binCount[a])))
 			if neighborBins[a] < 1 {
 				neighborBins[a] = 1
 			}
