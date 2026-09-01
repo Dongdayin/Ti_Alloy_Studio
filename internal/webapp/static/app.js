@@ -84,6 +84,19 @@
     t._hideTimer = setTimeout(() => t.classList.remove('show'), 2500);
   }
 
+  function userFacingError(error, fallback = '操作失败') {
+    const message = String(error?.message || fallback || '').trim();
+    if (
+      message === 'Failed to fetch' ||
+      message === 'NetworkError when attempting to fetch resource.' ||
+      message === 'Load failed' ||
+      /network|fetch/i.test(message)
+    ) {
+      return '本地服务已断开，请重新打开 Ti Alloy Studio 后重试。';
+    }
+    return message || fallback;
+  }
+
   function compositionInput() {
     const out = {};
     $('composition').value.split(/[;,\n]+/).forEach((entry) => {
@@ -321,7 +334,7 @@
       $('statusBadge').textContent = '模型已生成';
     } catch (error) {
       $('statusBadge').textContent = '错误';
-      toast(error.message);
+      toast(userFacingError(error, '生成失败'));
     }
   }
 
@@ -1192,7 +1205,7 @@
 		  return `<div class="diagnosticRow ${esc(tool.status)}"><strong>${esc(tool.name)}</strong><span>${esc(tool.status)}</span></div>`;
 		}).join('');
 	  } catch (error) {
-		panel.textContent = error.message;
+		panel.textContent = userFacingError(error, 'Optional connector probe failed');
 	  }
 	}
 
@@ -1211,7 +1224,7 @@
       setTimeout(() => URL.revokeObjectURL(objectURL), 2000);
       toast('Export complete');
     } catch (error) {
-      toast(error.message);
+      toast(userFacingError(error, '导出失败'));
     }
   }
 
@@ -1254,7 +1267,7 @@
       showExportResult(payload);
       toast('结构文件已保存');
     } catch (error) {
-      toast(error.message);
+      toast(userFacingError(error, '导出失败'));
     }
   }
 
@@ -1291,7 +1304,7 @@
       showExportResult(payload);
       toast('构型系列包已保存');
     } catch (error) {
-      toast(error.message);
+      toast(userFacingError(error, '构型系列包导出失败'));
     }
   }
 
@@ -1328,7 +1341,7 @@
       showExportResult(payload);
       toast('计算输入包已保存');
     } catch (error) {
-      toast(error.message);
+      toast(userFacingError(error, '计算输入包导出失败'));
     }
   }
 
@@ -1346,7 +1359,7 @@
       const payload = await response.json();
       if (!response.ok) throw Error(payload.error || '无法打开文件夹');
     } catch (error) {
-      toast(error.message);
+      toast(userFacingError(error, '无法打开文件夹'));
     }
   }
 

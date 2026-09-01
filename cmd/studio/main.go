@@ -21,6 +21,22 @@ import (
 	"tialloystudio/internal/webapp"
 )
 
+const (
+	browserStartupGrace   = 10 * time.Minute
+	browserHeartbeatGrace = 30 * time.Minute
+)
+
+func shouldCloseForHeartbeat(now, started time.Time, seen bool, lastBeatNanos int64) bool {
+	if seen {
+		lastBeat := time.Unix(0, lastBeatNanos)
+		if lastBeatNanos == 0 {
+			lastBeat = started
+		}
+		return now.Sub(lastBeat) > browserHeartbeatGrace
+	}
+	return now.Sub(started) > browserStartupGrace
+}
+
 func edgeExecutable() string {
 	if runtime.GOOS != "windows" {
 		return ""
@@ -221,13 +237,7 @@ func main() {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for range t.C {
-			if seen.Load() {
-				if time.Since(time.Unix(0, lastBeat.Load())) > 35*time.Second {
-					closeBrowser()
-					_ = srv.Close()
-					return
-				}
-			} else if time.Since(started) > 2*time.Minute {
+			if shouldCloseForHeartbeat(time.Now(), started, seen.Load(), lastBeat.Load()) {
 				closeBrowser()
 				_ = srv.Close()
 				return

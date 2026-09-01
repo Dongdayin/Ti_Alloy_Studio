@@ -14,6 +14,19 @@
     toast._projectHide = setTimeout(() => toast.classList.remove('show'), 2800);
   }
 
+  function userFacingError(error, fallback = '操作失败') {
+    const message = String(error?.message || fallback || '').trim();
+    if (
+      message === 'Failed to fetch' ||
+      message === 'NetworkError when attempting to fetch resource.' ||
+      message === 'Load failed' ||
+      /network|fetch/i.test(message)
+    ) {
+      return '本地服务已断开，请重新打开 Ti Alloy Studio 后重试。';
+    }
+    return message || fallback;
+  }
+
   function installProjectPanel() {
     const inspector = q('.inspector');
     if (!inspector || $('projectPanel')) return;
@@ -91,7 +104,7 @@
       window.TiAlloyStudio?.setActiveRevision(manifest.active_revision_id || '');
       renderHistory(manifest);
       return manifest;
-    } catch (error) { notify(error.message); return null; }
+    } catch (error) { notify(userFacingError(error, '项目状态读取失败')); return null; }
   }
 
   async function loadRevision(id) {
@@ -127,7 +140,7 @@
       const payload = await response.json();
       if (!response.ok) throw Error(payload.error || '项目包保存失败');
       if (!payload.cancelled) notify(`项目包已保存：${payload.filename || safeName}`);
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(userFacingError(error, '项目包保存失败')); }
   }
 
   async function importProject(file) {
@@ -136,7 +149,7 @@
       const payload = await response.json();
       if (!response.ok) throw Error(payload.error || '项目包打开失败');
       const manifest = await refreshProject(false); const record = await loadRevision(manifest.active_revision_id); restoreControls(record.request || {}); notify('项目包已打开');
-    } catch (error) { notify(`项目导入：${error.message}`); }
+    } catch (error) { notify(`项目导入：${userFacingError(error, '项目包打开失败')}`); }
   }
 
   installProjectPanel();
@@ -151,7 +164,7 @@
       if (select) await selectRevision(select.dataset.revisionSelect);
       if (edit) { const record = await loadRevision(edit.dataset.revisionEdit); restoreControls(record.request || {}); window.TiAlloyStudio?.editFromRevision(record.id); window.TiAlloyStudio?.switchMobilePanel('model'); notify('参数已恢复。修改后重新生成，会保存为新的结构记录。'); }
       if (derive) await deriveRevision(derive.dataset.parent, derive.dataset.revisionDerive);
-    } catch (error) { notify(error.message); }
+    } catch (error) { notify(userFacingError(error, '结构操作失败')); }
   });
   refreshProject(false);
 })();

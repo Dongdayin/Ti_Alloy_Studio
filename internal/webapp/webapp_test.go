@@ -50,6 +50,21 @@ func TestWorkbenchUsesSaveAsExportsAndInteractiveValues(t *testing.T) {
 	}
 }
 
+func TestWorkbenchTranslatesNetworkDisconnectIntoActionableChineseMessage(t *testing.T) {
+	for _, path := range []string{"/app.js", "/project.js"} {
+		s := servedAsset(t, path)
+		for _, needle := range []string{
+			"function userFacingError",
+			"本地服务已断开，请重新打开 Ti Alloy Studio 后重试",
+			"userFacingError(error",
+		} {
+			if !strings.Contains(s, needle) {
+				t.Fatalf("%s network disconnect handling missing %q", path, needle)
+			}
+		}
+	}
+}
+
 func TestWorkbenchResponsiveRevisionWorkflowAndBundledCapabilities(t *testing.T) {
 	page := servedAsset(t, "/")
 	for _, needle := range []string{`class="mobileTabs"`, `data-mobile-panel="model"`, `data-mobile-panel="structure"`, `data-mobile-panel="validation"`, `data-mobile-panel="export"`, `id="activeRevisionLabel"`, "Offline modeling package", "Troubleshooting details"} {
