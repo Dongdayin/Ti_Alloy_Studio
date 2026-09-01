@@ -37,6 +37,8 @@ Every package includes:
 
 The manifest records the package target, workflow preset, source model module, phase, atom count, structure SHA-256, template parameters, and `not_calculated` semantics.
 
+R3 improves large-model generation latency. A successful build still records the exact structure snapshot and its structure SHA-256 immediately, but POSCAR, XYZ, extended XYZ, LAMMPS data and CIF hashes are computed only when the user exports that specific format. This preserves export traceability while avoiding five unused full-text export renders during every model-generation click.
+
 ## Next Phase 3 increments
 
 1. Add user-facing workflow presets: relaxation, static single point, elastic constants, MD seed, defect workflow, interface workflow, NEP labeling seed.

@@ -80,8 +80,36 @@ func TestRevisionExportHashesMatchActualDownloads(t *testing.T) {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256([]byte(content))
-		if got := hex.EncodeToString(sum[:]); got != rev.ExportSHA256[format] {
-			t.Errorf("%s export SHA-256 = %s, recorded %s", format, got, rev.ExportSHA256[format])
+		afterExport := st.ProjectManifest("").History[0]
+		if got := hex.EncodeToString(sum[:]); got != afterExport.ExportSHA256[format] {
+			t.Errorf("%s export SHA-256 = %s, recorded %s", format, got, afterExport.ExportSHA256[format])
+		}
+	}
+}
+
+func TestTrackedRevisionDefersExportHashesUntilSpecificRevisionExport(t *testing.T) {
+	st := NewState()
+	if _, err := st.BuildTracked(BuildRequest{Module: "crystal", Phase: "alpha", NX: 6, NY: 6, NZ: 4}); err != nil {
+		t.Fatal(err)
+	}
+	rev := st.ProjectManifest("").History[0]
+	if len(rev.ExportSHA256) != 0 {
+		t.Fatalf("build precomputed %d export hashes; model generation should not render export files until the user exports", len(rev.ExportSHA256))
+	}
+
+	_, _, content, err := st.ExportRevision(rev.ID, "xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(content))
+	manifestAfterExport := st.ProjectManifest("")
+	hashes := manifestAfterExport.History[0].ExportSHA256
+	if got := hashes["xyz"]; got != hex.EncodeToString(sum[:]) {
+		t.Fatalf("lazy xyz export hash = %q, want actual exported content hash", got)
+	}
+	for _, unexpected := range []string{"poscar", "extxyz", "lammps", "cif"} {
+		if hashes[unexpected] != "" {
+			t.Fatalf("exporting xyz also computed %s hash %q", unexpected, hashes[unexpected])
 		}
 	}
 }

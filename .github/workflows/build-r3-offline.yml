@@ -205,7 +205,7 @@ jobs:
           $lines | Set-Content -Encoding ascii dist\SHA256SUMS.txt
           Get-Content dist\SHA256SUMS.txt
 
-      - name: Write Phase 3 R2 acceptance report
+      - name: Write Phase 3 R3 acceptance report
         shell: pwsh
         run: |
           $native=Get-Content "$env:RUNNER_TEMP\tialloy-installed-native.json" -Raw | ConvertFrom-Json
@@ -216,7 +216,7 @@ jobs:
             $engineLines += "- $($e.name): $($e.status) — $($e.version)"
           }
           $report=@"
-          # Ti Alloy Studio — Phase 3 R2 Acceptance Report
+          # Ti Alloy Studio — Phase 3 R3 Acceptance Report
 
           ## Release identity
 
@@ -248,7 +248,7 @@ jobs:
           - Status: $($native.result.status)
           - Atom count: $($native.result.atoms)
           - Ti-6Al-4V 192-site integer allocation: Ti=$($native.result.counts.Ti), Al=$($native.result.counts.Al), V=$($native.result.counts.V)
-          - GSFE structures in smoke series: $($native.result.gsfe_points)
+          - Geometry structures in smoke series: $($native.result.series_points)
           - Checks: $($native.result.checks -join '; ')
 
           ## Bundled mature-engine cross-check
@@ -261,23 +261,23 @@ jobs:
           $($hashes -join "`n")
           ```
 
-          ## Phase 3 R2 boundary
+          ## Phase 3 R3 boundary
 
-          Phase 3 R2 prepares parameterized downstream calculation input packages from verified titanium-alloy structures. It can package VASP, LAMMPS and GPUMD/NEP starter inputs with user-selected template parameters, but it does not run solvers, fit EOS curves, calculate GSFE energies, train NEP models, or invent energies, forces or stresses. All exported structures remain explicitly not_relaxed and not_calculated until an external calculation produces real results.
+          Phase 3 R3 prepares parameterized downstream calculation input packages from verified titanium-alloy structures and improves large-model generation latency by deferring format-specific export hashes until a user actually exports that format. It can package VASP, LAMMPS and GPUMD/NEP starter inputs with user-selected template parameters, but it does not run solvers, fit EOS curves, calculate GSFE energies, train NEP models, or invent energies, forces or stresses. All exported structures remain explicitly not_relaxed and not_calculated until an external calculation produces real results.
           "@
-          $report | Set-Content -LiteralPath 'dist\Phase3-R2-Acceptance-Report.md' -Encoding utf8
-          Get-Content 'dist\Phase3-R2-Acceptance-Report.md'
+          $report | Set-Content -LiteralPath 'dist\Phase3-R3-Acceptance-Report.md' -Encoding utf8
+          Get-Content 'dist\Phase3-R3-Acceptance-Report.md'
 
       - name: Upload offline release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TiAlloyStudio-Phase3-R2-Offline-Windows-x64
+          name: TiAlloyStudio-Phase3-R3-Offline-Windows-x64
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
           path: |
             dist/TiAlloyStudio-Setup-x64-Offline.exe
             dist/SHA256SUMS.txt
-            dist/Phase3-R2-Acceptance-Report.md
+            dist/Phase3-R3-Acceptance-Report.md
             docs/TiAlloyStudio-Manual.docx
             internal/installer/payload/THIRD_PARTY_NOTICES.txt

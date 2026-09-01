@@ -27,10 +27,10 @@ func TestRevisionAPISelectDeriveAndExportHistoricalSnapshot(t *testing.T) {
 		t.Fatalf("historical export status=%d body=%s", w.Code, w.Body.String())
 	}
 	sum := sha256.Sum256(w.Body.Bytes())
-	if got := hex.EncodeToString(sum[:]); got != first.ExportSHA256["xyz"] {
-		t.Fatalf("historical export hash=%s want=%s", got, first.ExportSHA256["xyz"])
-	}
 	afterExport := state.ProjectManifest("")
+	if got := hex.EncodeToString(sum[:]); got != afterExport.History[0].ExportSHA256["xyz"] {
+		t.Fatalf("historical export hash=%s want=%s", got, afterExport.History[0].ExportSHA256["xyz"])
+	}
 	if len(afterExport.History) != 2 || afterExport.ActiveRevisionID != secondID {
 		t.Fatal("historical export mutated project state")
 	}
@@ -97,7 +97,7 @@ func TestCapabilitiesAPIUsesBundledCatalogWithoutAutomaticConnectorProbe(t *test
 	}
 }
 
-func TestInfoReportsPhase3R2Release(t *testing.T) {
+func TestInfoReportsPhase3R3Release(t *testing.T) {
 	h := NewHandler(app.NewState())
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/info", nil))
@@ -105,7 +105,7 @@ func TestInfoReportsPhase3R2Release(t *testing.T) {
 		t.Fatalf("info status=%d body=%s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	for _, want := range []string{`"version":"0.4.1-phase3-r2"`, "standalone offline structure modeling", "no WSL or local solver required"} {
+	for _, want := range []string{`"version":"0.4.2-phase3-r3"`, "standalone offline structure modeling", "no WSL or local solver required"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("phase 3 info response missing %q: %s", want, body)
 		}

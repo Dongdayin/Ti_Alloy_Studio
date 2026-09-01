@@ -7,7 +7,7 @@ import (
 	"tialloystudio/internal/model"
 )
 
-func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
+func TestProjectManifestRecordsBuildLineageAndDefersArtifactHashes(t *testing.T) {
 	st := NewState()
 	_, err := st.BuildTracked(BuildRequest{Module: "random", Phase: "alpha", NX: 2, NY: 2, NZ: 2, CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 11})
 	if err != nil {
@@ -34,14 +34,20 @@ func TestProjectManifestRecordsBuildLineageAndArtifactHashes(t *testing.T) {
 	if len(second.StructureSHA256) != 64 {
 		t.Fatalf("structure sha256 = %q", second.StructureSHA256)
 	}
-	for _, key := range []string{"poscar", "lammps", "extxyz"} {
-		h := second.ExportSHA256[key]
-		if len(h) != 64 || strings.Trim(h, "0123456789abcdef") != "" {
-			t.Fatalf("%s hash is not lowercase SHA-256: %q", key, h)
-		}
+	if len(second.ExportSHA256) != 0 {
+		t.Fatalf("build precomputed export hashes: %+v", second.ExportSHA256)
 	}
 	if len(second.Validation.Checks) == 0 {
 		t.Fatal("validation report was not recorded")
+	}
+
+	_, _, content, err := st.ExportRevision(second.ID, "poscar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported := st.ProjectManifest("").History[1].ExportSHA256["poscar"]
+	if len(exported) != 64 || strings.Trim(exported, "0123456789abcdef") != "" || exported != sha256Text(content) {
+		t.Fatalf("lazy poscar hash was not recorded as lowercase SHA-256: %q", exported)
 	}
 }
 

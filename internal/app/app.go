@@ -1131,27 +1131,56 @@ func (s *State) Export(format string) (filename, mime, content string, err error
 // the active revision or appending project history.
 func (s *State) ExportRevision(id, format string) (filename, mime, content string, err error) {
 	if strings.TrimSpace(id) == "" {
-		return s.Export(format)
+		name, mime, content, err := s.Export(format)
+		if err == nil {
+			s.rememberActiveExportHash(format, content)
+		}
+		return name, mime, content, err
 	}
 	record, err := s.revisionSnapshot(id)
 	if err != nil {
 		return "", "", "", err
 	}
-	return exportStructure(record.Structure, format)
+	name, mime, content, err := exportStructure(record.Structure, format)
+	if err == nil {
+		s.rememberRevisionExportHash(record.ID, format, content)
+	}
+	return name, mime, content, err
+}
+
+func canonicalExportFormat(format string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "poscar", "vasp":
+		return "poscar", nil
+	case "xyz":
+		return "xyz", nil
+	case "extxyz", "gpumd":
+		return "extxyz", nil
+	case "lammps", "data":
+		return "lammps", nil
+	case "cif":
+		return "cif", nil
+	default:
+		return "", fmt.Errorf("unsupported export format %q", format)
+	}
 }
 
 func exportStructure(structure model.Structure, format string) (filename, mime, content string, err error) {
 	if structure.NAtoms() == 0 {
 		return "", "", "", errors.New("revision has no structure snapshot")
 	}
-	switch strings.ToLower(format) {
-	case "poscar", "vasp":
+	key, err := canonicalExportFormat(format)
+	if err != nil {
+		return "", "", "", err
+	}
+	switch key {
+	case "poscar":
 		return "POSCAR", "text/plain", model.ExportPOSCAR(structure, "Ti Alloy Studio"), nil
 	case "xyz":
 		return "model.xyz", "chemical/x-xyz", model.ExportXYZ(structure), nil
-	case "extxyz", "gpumd":
+	case "extxyz":
 		return "model.extxyz", "chemical/x-xyz", model.ExportExtXYZ(structure), nil
-	case "lammps", "data":
+	case "lammps":
 		return "model.data", "text/plain", model.ExportLAMMPS(structure), nil
 	case "cif":
 		return "model.cif", "chemical/x-cif", model.ExportCIF(structure), nil

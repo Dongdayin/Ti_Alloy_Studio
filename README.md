@@ -1,6 +1,6 @@
 # Ti Alloy Studio — titanium alloy modeler
 
-Ti Alloy Studio 0.4.1 Phase 3 R2 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
+Ti Alloy Studio 0.4.2 Phase 3 R3 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
 
 This release is deliberately modeling-only. It creates titanium-alloy structure files for later use in VASP, LAMMPS, GPUMD, NEP training, and other workflows, but it does not run those calculations. A normal user installs one offline package and does not configure Python, Conda, WSL, Atomsk, ATAT, or `PATH`.
 
@@ -19,7 +19,7 @@ This release is deliberately modeling-only. It creates titanium-alloy structure 
 
 Interactive builds default to fast validation: Ti Alloy Studio runs internal structural checks and skips the slower Atomsk/ASE cross-check. The advanced validation selector can be switched to deep validation for release, delivery, or troubleshooting runs.
 
-Each successful revision stores its explicit parent, normalized recipe, exact structure, validation and engine evidence, scientific state, and export SHA-256 hashes. A failed build, derivation, or project import leaves the active revision and history unchanged.
+Each successful revision stores its explicit parent, normalized recipe, exact structure, validation and engine evidence, scientific state, and structure SHA-256. Export SHA-256 hashes are recorded when a user actually exports that format, so large-model generation does not waste time rendering unused POSCAR/XYZ/extXYZ/LAMMPS/CIF text. A failed build, derivation, or project import leaves the active revision and history unchanged.
 
 ## Offline package
 

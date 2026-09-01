@@ -18,7 +18,7 @@ func TestTwoStageHelperDoesNotUseLegacyBatchLauncher(t *testing.T) {
 }
 
 func TestInstallerDisplayVersionStartsPhase3(t *testing.T) {
-	if releaseVersion != "0.4.1-phase3-r2" {
+	if releaseVersion != "0.4.2-phase3-r3" {
 		t.Fatalf("installer release version=%q", releaseVersion)
 	}
 }

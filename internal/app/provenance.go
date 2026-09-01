@@ -117,16 +117,6 @@ func structureSHA256(s model.Structure) string {
 	return sha256Bytes(b)
 }
 
-func exportHashes(s model.Structure) map[string]string {
-	return map[string]string{
-		"poscar": sha256Text(model.ExportPOSCAR(s, "Ti Alloy Studio")),
-		"lammps": sha256Text(model.ExportLAMMPS(s)),
-		"extxyz": sha256Text(model.ExportExtXYZ(s)),
-		"xyz":    sha256Text(model.ExportXYZ(s)),
-		"cif":    sha256Text(model.ExportCIF(s)),
-	}
-}
-
 func asInt(v any) int {
 	switch x := v.(type) {
 	case int:
@@ -268,7 +258,7 @@ func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) {
 		Request:         req,
 		Structure:       out.Structure,
 		StructureSHA256: structureSHA256(out.Structure),
-		ExportSHA256:    exportHashes(out.Structure),
+		ExportSHA256:    map[string]string{},
 		Validation:      out.Validation,
 		Allocation:      out.Allocation,
 		SQS:             out.SQS,
@@ -383,6 +373,37 @@ func (s *State) revisionSnapshot(id string) (BuildRecord, error) {
 		return cloned, nil
 	}
 	return BuildRecord{}, fmt.Errorf("revision %q not found", id)
+}
+
+func (s *State) rememberActiveExportHash(format, content string) {
+	p := stateProject(s)
+	p.mu.Lock()
+	id := p.manifest.ActiveRevisionID
+	p.mu.Unlock()
+	if id != "" {
+		s.rememberRevisionExportHash(id, format, content)
+	}
+}
+
+func (s *State) rememberRevisionExportHash(id, format, content string) {
+	key, err := canonicalExportFormat(format)
+	if err != nil {
+		return
+	}
+	p := stateProject(s)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i := range p.manifest.History {
+		if p.manifest.History[i].ID != id {
+			continue
+		}
+		if p.manifest.History[i].ExportSHA256 == nil {
+			p.manifest.History[i].ExportSHA256 = map[string]string{}
+		}
+		p.manifest.History[i].ExportSHA256[key] = sha256Text(content)
+		p.manifest.UpdatedAt = timestampUTC()
+		return
+	}
 }
 
 // DeriveRevision applies a local defect operation to the exact selected
