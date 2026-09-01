@@ -46,3 +46,62 @@ func TestNativeSQSReportsDeterministicPairAndTripletCorrelationEvidence(t *testi
 		t.Fatalf("bounded optimization trace length=%d want 61", len(first.Convergence))
 	}
 }
+
+func TestFixedCompositionSQSEvaluatorMatchesFullQualityCalculation(t *testing.T) {
+	species := []string{"Ti", "Al", "Ti", "V"}
+	shells := []pairShell{{
+		index:    1,
+		distance: 1,
+		pairs: [][2]int{
+			{0, 1}, {0, 2}, {0, 3},
+			{1, 2}, {1, 3}, {2, 3},
+		},
+	}}
+	triplets := []tripletCluster{{
+		signature: [3]int{1, 1, 1},
+		triplets:  [][3]int{{0, 1, 2}, {0, 1, 3}, {0, 2, 3}, {1, 2, 3}},
+	}}
+
+	got := newFixedCompositionSQSEvaluator(species, shells, triplets).quality(species)
+	if len(got.Shells) != 1 || len(got.TripletClusters) != 1 {
+		t.Fatalf("quality dimensions = %d shells %d triplets, want 1/1", len(got.Shells), len(got.TripletClusters))
+	}
+	pairs := got.Shells[0]
+	for key, want := range map[PairKey]float64{
+		"Al-Al": 0,
+		"Al-Ti": 2.0 / 6.0,
+		"Al-V":  1.0 / 6.0,
+		"Ti-Ti": 1.0 / 6.0,
+		"Ti-V":  2.0 / 6.0,
+		"V-V":   0,
+	} {
+		if math.Abs(pairs.Observed[key]-want) > 1e-12 {
+			t.Fatalf("observed pair %s = %.15g, want %.15g", key, pairs.Observed[key], want)
+		}
+	}
+	for key, want := range map[PairKey]float64{
+		"Al-Al": 0.25 * 0.25,
+		"Al-Ti": 2 * 0.25 * 0.5,
+		"Al-V":  2 * 0.25 * 0.25,
+		"Ti-Ti": 0.5 * 0.5,
+		"Ti-V":  2 * 0.5 * 0.25,
+		"V-V":   0.25 * 0.25,
+	} {
+		if math.Abs(pairs.Target[key]-want) > 1e-12 {
+			t.Fatalf("target pair %s = %.15g, want %.15g", key, pairs.Target[key], want)
+		}
+	}
+	triplet := got.TripletClusters[0]
+	for key, want := range map[TripletKey]float64{
+		"Al-Ti-Ti": 1.0 / 4.0,
+		"Al-Ti-V":  2.0 / 4.0,
+		"Ti-Ti-V":  1.0 / 4.0,
+	} {
+		if math.Abs(triplet.Observed[key]-want) > 1e-12 {
+			t.Fatalf("observed triplet %s = %.15g, want %.15g", key, triplet.Observed[key], want)
+		}
+	}
+	if math.Abs(triplet.Target["Al-Ti-V"]-6*0.25*0.5*0.25) > 1e-12 {
+		t.Fatalf("target triplet Al-Ti-V = %.15g", triplet.Target["Al-Ti-V"])
+	}
+}

@@ -116,6 +116,60 @@ func TestTrainingSetConfigurationCountEqualsRequestedCount(t *testing.T) {
 	}
 }
 
+func TestTrainingSetBuildUsesLazyPreviewUntilBatchExport(t *testing.T) {
+	st := NewState()
+	res, err := st.BuildUser(BuildRequest{
+		Module:      "training_set",
+		Phase:       "alpha",
+		NX:          3,
+		NY:          3,
+		NZ:          3,
+		SeriesCount: 128,
+		DatasetKind: "nep",
+		Seed:        17,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Analysis["configuration_count"]; got != 128 {
+		t.Fatalf("configuration_count = %v, want 128", got)
+	}
+	if got := res.Analysis["generation_mode"]; got != "lazy_preview" {
+		t.Fatalf("generation_mode = %v, want lazy_preview", got)
+	}
+	if got := res.Structure.Meta["dataset_index"]; got != 0 {
+		t.Fatalf("preview dataset_index = %v, want 0", got)
+	}
+	if _, ok := res.Series["configuration_indices"]; ok {
+		t.Fatalf("lazy training-set preview should not send every index in the build response: %v", res.Series["configuration_indices"])
+	}
+	indexRange, ok := res.Series["configuration_index_range"].([]int)
+	if !ok {
+		t.Fatalf("configuration_index_range type = %T, want []int", res.Series["configuration_index_range"])
+	}
+	if len(indexRange) != 2 || indexRange[0] != 0 || indexRange[1] != 127 {
+		t.Fatalf("configuration_index_range = %v, want [0 127]", indexRange)
+	}
+
+	name, _, data, err := st.ExportBatch("extxyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	extXYZCount := 0
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".extxyz") {
+			extXYZCount++
+		}
+	}
+	if extXYZCount != 128 {
+		t.Fatalf("%s contains %d extXYZ files, want 128", name, extXYZCount)
+	}
+}
+
 func TestPhase2BuildUserCreatesModelingOperationsFromTitaniumAlloyBase(t *testing.T) {
 	st := NewState()
 	req := BuildRequest{

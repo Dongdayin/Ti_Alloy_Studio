@@ -561,10 +561,13 @@ func phase2SeriesForRequest(req BuildRequest) ([]phase2SeriesEntry, error) {
 		}
 		return out, nil
 	case "training_set":
+		const datasetName = "TiAlloyStudio-phase2"
 		structures := model.GenerateTrainingCandidates(host, model.TrainingCandidateOptions{Count: req.SeriesCount, Seed: req.Seed})
-		dataset := model.BuildTrainingSet(structures, model.DatasetOptions{Kind: req.DatasetKind, Name: "TiAlloyStudio-phase2"})
-		out := make([]phase2SeriesEntry, 0, len(dataset.Structures))
-		for i, s := range dataset.Structures {
+		out := make([]phase2SeriesEntry, 0, len(structures))
+		for i, s := range structures {
+			s.Meta["dataset_kind"] = req.DatasetKind
+			s.Meta["dataset_name"] = datasetName
+			s.Meta["dataset_index"] = i
 			out = append(out, phase2SeriesEntry{Kind: "training_set", Index: i, Lambda: -1, Structure: s})
 		}
 		return out, nil
@@ -940,16 +943,17 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		if err := buildConfiguredHost(req, &out); err != nil {
 			return out, err
 		}
-		structures := model.GenerateTrainingCandidates(out.Structure, model.TrainingCandidateOptions{Count: req.SeriesCount, Seed: req.Seed})
-		dataset := model.BuildTrainingSet(structures, model.DatasetOptions{Kind: req.DatasetKind, Name: "TiAlloyStudio-phase2"})
-		out.Structure = dataset.Structures[0]
-		out.Analysis["dataset_kind"] = dataset.Kind
-		out.Analysis["dataset_name"] = dataset.Name
-		out.Analysis["configuration_count"] = len(dataset.Structures)
-		out.Series["configuration_indices"] = make([]int, len(dataset.Structures))
-		for i := range dataset.Structures {
-			out.Series["configuration_indices"].([]int)[i] = i
-		}
+		const datasetName = "TiAlloyStudio-phase2"
+		out.Structure = model.GenerateTrainingCandidate(out.Structure, model.TrainingCandidateOptions{Count: req.SeriesCount, Seed: req.Seed}, 0)
+		out.Structure.Meta["dataset_kind"] = req.DatasetKind
+		out.Structure.Meta["dataset_name"] = datasetName
+		out.Structure.Meta["dataset_index"] = 0
+		out.Analysis["dataset_kind"] = req.DatasetKind
+		out.Analysis["dataset_name"] = datasetName
+		out.Analysis["configuration_count"] = req.SeriesCount
+		out.Analysis["generation_mode"] = "lazy_preview"
+		out.Analysis["series_materialization"] = "on_batch_export"
+		out.Series["configuration_index_range"] = []int{0, req.SeriesCount - 1}
 
 	case "eos":
 		host, err := buildHost(req)

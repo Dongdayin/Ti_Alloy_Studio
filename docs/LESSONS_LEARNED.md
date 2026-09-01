@@ -83,3 +83,11 @@
 - Root cause: `Start-Process -ArgumentList @(..., $install, ...)` joined the array without quoting `$install`. A direct argv probe confirmed that the path arrived as five separate arguments. Go flag parsing stopped at the first stray positional token, so the later `--no-launch` option was ignored and the launched application kept the waited process tree alive.
 - Fix: the workflow passes one explicitly quoted command-line string, places `--no-launch` before the path option, and continues to verify the exact spaced installation directory.
 - Regression gate: every Windows release installs to a path containing spaces and must proceed from installation to installed smoke tests and uninstall without manual process termination.
+
+## 2026-09-01 — Reinstall must prove the private engine tree was replaced before smoke tests
+
+- Trigger: an existing Windows installation rolled back during the bundled mature-engine smoke test with `ModuleNotFoundError: No module named 'ase.dft.dos'`, while a fresh-directory install from the same R4 installer passed.
+- Symptom: the engine bundle contained `Lib/site-packages/ase/dft/dos.py`, but the smoke test ran against an installation path where the ASE import chain could not find that module.
+- Root cause: the installer removed the old `engines` directory before extraction but ignored cleanup errors and did not verify that the old private runtime tree was gone. A locked or stale engine directory could therefore proceed to extraction and later fail at smoke time.
+- Fix: old private engine cleanup is now a hard gate with a clear close-and-retry message, and the offline bundle verifier requires the ASE `io` and `dft.dos` files used by the installed smoke path.
+- Regression gates: installer unit tests cover cleanup failure reporting and bundle rejection when ASE's smoke-path dependency is missing; the release build also imports `ase.io.read` in both the no-network wheelhouse test and the app-local Python runtime test.

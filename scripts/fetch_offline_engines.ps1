@@ -122,8 +122,10 @@ foreach ($Name in $Expected.Keys) {
   $File = Join-Path $Wheelhouse $Name
   if (-not (Test-Path $File)) { throw "Required wheel missing: $Name" }
   $Hash = (Get-FileHash -Algorithm SHA256 $File).Hash.ToLowerInvariant()
-  if ($Hash -ne $Expected[$Name]) { throw "SHA256 mismatch for ${Name}: $Hash" }
+if ($Hash -ne $Expected[$Name]) { throw "SHA256 mismatch for ${Name}: $Hash" }
 }
+
+$ScienceSmoke = "import sys,ase,spglib,atomman; from ase.io import read; import ase.dft.dos; from pymatgen.io.vasp import Poscar; print('python-stack-io-PASS', sys.executable)"
 
 Write-Host '[6/9] Proving the wheelhouse installs with NO network access'
 $Offline = Join-Path $env:TEMP ('TiAlloyStudio-offline-' + [guid]::NewGuid())
@@ -131,7 +133,7 @@ $Offline = Join-Path $env:TEMP ('TiAlloyStudio-offline-' + [guid]::NewGuid())
 $OfflinePy = Join-Path $Offline 'Scripts\python.exe'
 & $OfflinePy -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse -r $Lock
 if ($LASTEXITCODE -ne 0) { throw 'Offline wheelhouse installation failed' }
-& $OfflinePy -c "import ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('offline-python-stack-PASS')"
+& $OfflinePy -c $ScienceSmoke
 if ($LASTEXITCODE -ne 0) { throw 'Offline science stack verification failed' }
 
 Write-Host '[7/9] Preinstalling the complete science stack into the app-local runtime'
@@ -140,7 +142,7 @@ New-Item -ItemType Directory -Force -Path $RuntimeSite | Out-Null
 & $Py -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse --target $RuntimeSite -r $Lock
 if ($LASTEXITCODE -ne 0) { throw 'App-local Python science stack staging failed' }
 $RuntimePython = Join-Path $Runtime 'python.exe'
-& $RuntimePython -c "import sys,ase,spglib,atomman;from pymatgen.io.vasp import Poscar;print('app-local-python-stack-PASS',sys.executable)"
+& $RuntimePython -c $ScienceSmoke
 if ($LASTEXITCODE -ne 0) { throw 'App-local Python runtime validation failed' }
 $RuntimeBundle = Join-Path $Out 'python-runtime.zip'
 Compress-Archive -Path (Join-Path $Runtime '*') -DestinationPath $RuntimeBundle -CompressionLevel Optimal

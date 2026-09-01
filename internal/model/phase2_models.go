@@ -956,6 +956,22 @@ func GenerateTrainingCandidates(host Structure, opts TrainingCandidateOptions) [
 	if count < 1 {
 		count = 1
 	}
+	baseFrac := host.Fractional(true)
+	out := make([]Structure, 0, count)
+	for i := 0; i < count; i++ {
+		out = append(out, generateTrainingCandidate(host, baseFrac, opts, i))
+	}
+	return out
+}
+
+func GenerateTrainingCandidate(host Structure, opts TrainingCandidateOptions, index int) Structure {
+	if index < 0 {
+		index = 0
+	}
+	return generateTrainingCandidate(host, host.Fractional(true), opts, index)
+}
+
+func generateTrainingCandidate(host Structure, baseFrac []Vec3, opts TrainingCandidateOptions, index int) Structure {
 	rattle := opts.MaxRattleAngstrom
 	if rattle <= 0 {
 		rattle = 0.025
@@ -964,41 +980,36 @@ func GenerateTrainingCandidates(host Structure, opts TrainingCandidateOptions) [
 	if strain <= 0 {
 		strain = 0.015
 	}
-	baseFrac := host.Fractional(true)
-	out := make([]Structure, 0, count)
-	for i := 0; i < count; i++ {
-		s := copyStructure(host)
-		variant := "base"
-		if i > 0 {
-			amp := float64((i%7)-3) / 3 * strain
-			shear := float64(((i*2)%5)-2) / 2 * strain * 0.4
-			cell := s.Cell
-			cell[0] = VScale(host.Cell[0], 1+amp)
-			cell[1] = VAdd(VScale(host.Cell[1], 1-0.5*amp), VScale(host.Cell[0], shear))
-			cell[2] = VScale(host.Cell[2], 1+0.25*amp)
-			s.Cell = cell
-			rng := rand.New(rand.NewSource(opts.Seed + int64(i)*7919))
-			for site, f := range baseFrac {
-				p := FracToCart(f, cell)
-				disp := Vec3{
-					(rng.Float64()*2 - 1) * rattle,
-					(rng.Float64()*2 - 1) * rattle,
-					(rng.Float64()*2 - 1) * rattle,
-				}
-				s.Positions[site] = VAdd(p, disp)
+	s := copyStructure(host)
+	variant := "base"
+	if index > 0 {
+		amp := float64((index%7)-3) / 3 * strain
+		shear := float64(((index*2)%5)-2) / 2 * strain * 0.4
+		cell := s.Cell
+		cell[0] = VScale(host.Cell[0], 1+amp)
+		cell[1] = VAdd(VScale(host.Cell[1], 1-0.5*amp), VScale(host.Cell[0], shear))
+		cell[2] = VScale(host.Cell[2], 1+0.25*amp)
+		s.Cell = cell
+		rng := rand.New(rand.NewSource(opts.Seed + int64(index)*7919))
+		for site, f := range baseFrac {
+			p := FracToCart(f, cell)
+			disp := Vec3{
+				(rng.Float64()*2 - 1) * rattle,
+				(rng.Float64()*2 - 1) * rattle,
+				(rng.Float64()*2 - 1) * rattle,
 			}
-			variant = "strained_rattled"
+			s.Positions[site] = VAdd(p, disp)
 		}
-		markGeometryOnly(&s, "training_configuration")
-		s.Meta["operation"] = "training_set_candidate"
-		s.Meta["training_candidate_index"] = i
-		s.Meta["training_variant"] = variant
-		s.Meta["random_seed"] = opts.Seed
-		s.Meta["max_rattle_angstrom"] = rattle
-		s.Meta["max_strain_magnitude"] = strain
-		out = append(out, s)
+		variant = "strained_rattled"
 	}
-	return out
+	markGeometryOnly(&s, "training_configuration")
+	s.Meta["operation"] = "training_set_candidate"
+	s.Meta["training_candidate_index"] = index
+	s.Meta["training_variant"] = variant
+	s.Meta["random_seed"] = opts.Seed
+	s.Meta["max_rattle_angstrom"] = rattle
+	s.Meta["max_strain_magnitude"] = strain
+	return s
 }
 
 func BuildTrainingSet(structures []Structure, opts DatasetOptions) TrainingSet {

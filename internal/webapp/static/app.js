@@ -1296,7 +1296,7 @@
           gpumd_ensemble: $('gpumdEnsemble')?.value || 'nvt',
           gpumd_temperature_k: num('gpumdTemperature'),
           gpumd_run_steps: num('gpumdRunSteps'),
-          suggested_name: `TiAlloyStudio-Phase3-R3-${target.toUpperCase()}-Inputs.zip`
+          suggested_name: `TiAlloyStudio-Phase3-R4-${target.toUpperCase()}-Inputs.zip`
         })
       });
       const payload = await response.json();

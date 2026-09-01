@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -18,7 +20,23 @@ func TestTwoStageHelperDoesNotUseLegacyBatchLauncher(t *testing.T) {
 }
 
 func TestInstallerDisplayVersionStartsPhase3(t *testing.T) {
-	if releaseVersion != "0.4.2-phase3-r3" {
+	if releaseVersion != "0.4.3-phase3-r4" {
 		t.Fatalf("installer release version=%q", releaseVersion)
+	}
+}
+
+func TestPrepareCleanEngineDirReportsRemoveFailure(t *testing.T) {
+	err := prepareCleanEngineDirWith(`D:\TiAlloyStudio\engines`,
+		func(string) error { return errors.New("file is locked") },
+		func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+	)
+	if err == nil {
+		t.Fatal("old engine cleanup failure was ignored")
+	}
+	msg := err.Error()
+	for _, want := range []string{"old private engine directory", "file is locked", "close Ti Alloy Studio"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("cleanup error %q does not contain %q", msg, want)
+		}
 	}
 }

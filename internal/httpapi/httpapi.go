@@ -90,7 +90,7 @@ func (a *api) info(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":     "Ti Alloy Studio",
-		"version":  "0.4.2-phase3-r3",
+		"version":  "0.4.3-phase3-r4",
 		"engine":   "TiModelCore Native + bundled Atomsk/ASE/spglib/pymatgen/AtomMan validation",
 		"platform": "Windows x64 standalone offline structure modeling; no WSL or local solver required",
 	})

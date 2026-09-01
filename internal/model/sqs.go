@@ -255,18 +255,44 @@ func sortedTripletKeys(values map[TripletKey]float64) []TripletKey {
 	return keys
 }
 
-func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster) SQSQuality {
+type fixedCompositionSQSEvaluator struct {
+	shells         []pairShell
+	triplets       []tripletCluster
+	elements       []string
+	concentrations map[string]float64
+	pairTarget     map[PairKey]float64
+	tripletTarget  map[TripletKey]float64
+	pairKeys       []PairKey
+	tripletKeys    []TripletKey
+}
+
+func newFixedCompositionSQSEvaluator(species []string, shells []pairShell, triplets []tripletCluster) fixedCompositionSQSEvaluator {
 	elements, concentrations := concentrationData(species)
 	pairTarget := pairTargets(elements, concentrations)
 	tripletTarget := tripletTargets(elements, concentrations)
-	pairKeys := sortedPairKeys(pairTarget)
-	tripletKeys := sortedTripletKeys(tripletTarget)
+	return fixedCompositionSQSEvaluator{
+		shells:         shells,
+		triplets:       triplets,
+		elements:       elements,
+		concentrations: concentrations,
+		pairTarget:     pairTarget,
+		tripletTarget:  tripletTarget,
+		pairKeys:       sortedPairKeys(pairTarget),
+		tripletKeys:    sortedTripletKeys(tripletTarget),
+	}
+}
+
+func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster) SQSQuality {
+	return newFixedCompositionSQSEvaluator(species, shells, triplets).quality(species)
+}
+
+func (e fixedCompositionSQSEvaluator) quality(species []string) SQSQuality {
 	out := SQSQuality{Method: "pair_triplet_correlation_sqs", VerificationStatus: "not_atat_verified"}
 	sumSquared, errorCount := 0.0, 0
-	for _, shell := range shells {
+	for _, shell := range e.shells {
 		observedCount := map[PairKey]int{}
 		directed := map[string]map[string]int{}
-		for _, element := range elements {
+		for _, element := range e.elements {
 			directed[element] = map[string]int{}
 		}
 		for _, pair := range shell.pairs {
@@ -277,8 +303,8 @@ func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster)
 		}
 		observed, residuals, warrenCowley := map[PairKey]float64{}, map[PairKey]float64{}, map[PairKey]float64{}
 		shellSquared, shellMax := 0.0, 0.0
-		for _, key := range pairKeys {
-			target := pairTarget[key]
+		for _, key := range e.pairKeys {
+			target := e.pairTarget[key]
 			observed[key] = float64(observedCount[key]) / float64(len(shell.pairs))
 			residuals[key] = observed[key] - target
 			shellSquared += residuals[key] * residuals[key]
@@ -286,33 +312,33 @@ func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster)
 			sumSquared += residuals[key] * residuals[key]
 			errorCount++
 		}
-		for _, center := range elements {
+		for _, center := range e.elements {
 			total := 0
-			for _, neighbor := range elements {
+			for _, neighbor := range e.elements {
 				total += directed[center][neighbor]
 			}
-			for _, neighbor := range elements {
-				if total > 0 && concentrations[neighbor] > 0 {
-					warrenCowley[PairKey(center+"->"+neighbor)] = 1 - (float64(directed[center][neighbor])/float64(total))/concentrations[neighbor]
+			for _, neighbor := range e.elements {
+				if total > 0 && e.concentrations[neighbor] > 0 {
+					warrenCowley[PairKey(center+"->"+neighbor)] = 1 - (float64(directed[center][neighbor])/float64(total))/e.concentrations[neighbor]
 				}
 			}
 		}
 		out.Shells = append(out.Shells, PairShellQuality{
 			ShellIndex: shell.index, Distance: shell.distance, PairCount: len(shell.pairs),
-			Observed: observed, Target: pairTarget, Errors: residuals,
-			RMS: math.Sqrt(shellSquared / float64(len(pairTarget))), MaxAbs: shellMax, WarrenCowley: warrenCowley,
+			Observed: observed, Target: e.pairTarget, Errors: residuals,
+			RMS: math.Sqrt(shellSquared / float64(len(e.pairTarget))), MaxAbs: shellMax, WarrenCowley: warrenCowley,
 		})
 		out.MaxAbsPairError = math.Max(out.MaxAbsPairError, shellMax)
 	}
-	for index, cluster := range triplets {
+	for index, cluster := range e.triplets {
 		counts := map[TripletKey]int{}
 		for _, sites := range cluster.triplets {
 			counts[tripletKey(species[sites[0]], species[sites[1]], species[sites[2]])]++
 		}
 		observed, residuals := map[TripletKey]float64{}, map[TripletKey]float64{}
 		clusterSquared, clusterMax := 0.0, 0.0
-		for _, key := range tripletKeys {
-			target := tripletTarget[key]
+		for _, key := range e.tripletKeys {
+			target := e.tripletTarget[key]
 			observed[key] = float64(counts[key]) / float64(len(cluster.triplets))
 			residuals[key] = observed[key] - target
 			clusterSquared += residuals[key] * residuals[key]
@@ -322,8 +348,8 @@ func sqsQuality(species []string, shells []pairShell, triplets []tripletCluster)
 		}
 		out.TripletClusters = append(out.TripletClusters, TripletClusterQuality{
 			ClusterIndex: index + 1, ShellSignature: cluster.signature, TripletCount: len(cluster.triplets),
-			Observed: observed, Target: tripletTarget, Errors: residuals,
-			RMS: math.Sqrt(clusterSquared / float64(len(tripletTarget))), MaxAbs: clusterMax,
+			Observed: observed, Target: e.tripletTarget, Errors: residuals,
+			RMS: math.Sqrt(clusterSquared / float64(len(e.tripletTarget))), MaxAbs: clusterMax,
 		})
 		out.MaxAbsTripletError = math.Max(out.MaxAbsTripletError, clusterMax)
 	}
@@ -344,7 +370,8 @@ func GenerateSQS(host Structure, alloc CompositionAllocation, seed int64, nShell
 	triplets := buildTripletClusters(shells)
 	initial := RandomSubstitution(host, alloc, seed)
 	current := append([]string(nil), initial.Species...)
-	quality := sqsQuality(current, shells, triplets)
+	evaluator := newFixedCompositionSQSEvaluator(current, shells, triplets)
+	quality := evaluator.quality(current)
 	initialObjective := quality.Objective
 	best := append([]string(nil), current...)
 	bestQuality := quality
@@ -358,7 +385,7 @@ func GenerateSQS(host Structure, alloc CompositionAllocation, seed int64, nShell
 			continue
 		}
 		current[i], current[j] = current[j], current[i]
-		candidate := sqsQuality(current, shells, triplets)
+		candidate := evaluator.quality(current)
 		delta := candidate.Objective - quality.Objective
 		fraction := float64(step) / math.Max(1, float64(steps-1))
 		temperature := startTemperature * math.Pow(endTemperature/startTemperature, fraction)

@@ -18,7 +18,7 @@ import (
 )
 
 const product = "Ti Alloy Studio"
-const releaseVersion = "0.4.2-phase3-r3"
+const releaseVersion = "0.4.3-phase3-r4"
 const uninstallKey = `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\TiAlloyStudio`
 
 func psq(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
@@ -130,7 +130,9 @@ func installEngines(dir string) error {
 		return err
 	}
 	eng := filepath.Join(dir, "engines")
-	_ = os.RemoveAll(eng)
+	if err = prepareCleanEngineDir(eng); err != nil {
+		return err
+	}
 	progressSet(32, "Extracting application-local scientific runtime")
 	if err = inst.InstallOfflineEngines(eng, data); err != nil {
 		_ = os.WriteFile(filepath.Join(dir, "engine-install.log"), []byte(err.Error()+"\r\n"), 0644)
@@ -138,6 +140,26 @@ func installEngines(dir string) error {
 	}
 	_ = os.WriteFile(filepath.Join(dir, "engine-install.log"), []byte("application-local Python runtime and Atomsk extracted successfully\r\n"), 0644)
 	progressSet(84, "Bundled scientific engines installed")
+	return nil
+}
+
+func prepareCleanEngineDir(dir string) error {
+	return prepareCleanEngineDirWith(dir, os.RemoveAll, os.Stat)
+}
+
+func prepareCleanEngineDirWith(dir string, removeAll func(string) error, stat func(string) (os.FileInfo, error)) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return fmt.Errorf("old private engine directory path is empty")
+	}
+	if err := removeAll(dir); err != nil {
+		return fmt.Errorf("remove old private engine directory %q: %w; close Ti Alloy Studio and retry", dir, err)
+	}
+	if _, err := stat(dir); err == nil {
+		return fmt.Errorf("old private engine directory %q still exists after cleanup; close Ti Alloy Studio and retry", dir)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("verify old private engine directory cleanup %q: %w", dir, err)
+	}
 	return nil
 }
 

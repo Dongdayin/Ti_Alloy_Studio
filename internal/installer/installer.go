@@ -90,7 +90,14 @@ func VerifyOfflineEngineBundle(data []byte) error {
 	for _, f := range runtimeZip.File {
 		runtimeFiles[strings.ReplaceAll(f.Name, `\`, `/`)] = f.UncompressedSize64
 	}
-	for _, n := range []string{"python.exe", "python311.dll", "python311._pth", "Lib/site-packages/ase/__init__.py"} {
+	for _, n := range []string{
+		"python.exe",
+		"python311.dll",
+		"python311._pth",
+		"Lib/site-packages/ase/__init__.py",
+		"Lib/site-packages/ase/io/__init__.py",
+		"Lib/site-packages/ase/dft/dos.py",
+	} {
 		if runtimeFiles[n] < 1 {
 			return fmt.Errorf("private Python runtime missing required artifact %s", n)
 		}

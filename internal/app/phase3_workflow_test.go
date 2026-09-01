@@ -31,6 +31,9 @@ func TestPhase3CalculationPackagePreparesInputsWithoutSolverResults(t *testing.T
 	if !strings.HasSuffix(name, ".zip") || mime != "application/zip" {
 		t.Fatalf("package identity = %q %q, want zip/application", name, mime)
 	}
+	if !strings.Contains(name, "Phase3-R4") {
+		t.Fatalf("package name = %q, want Phase3-R4 release marker", name)
+	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +56,7 @@ func TestPhase3CalculationPackagePreparesInputsWithoutSolverResults(t *testing.T
 			t.Fatalf("calculation package missing %s; files=%v", required, keys(contents))
 		}
 	}
+	requireContains(t, contents["README.txt"], "Phase 3 R4")
 	allText := strings.ToLower(strings.Join(mapValues(contents), "\n"))
 	for _, forbidden := range []string{"outcar", "oszicar", "final_energy", "forces=", "stress="} {
 		if strings.Contains(allText, forbidden) {

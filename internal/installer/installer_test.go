@@ -30,15 +30,34 @@ func zipBytes(t *testing.T, files map[string][]byte) []byte {
 func appLocalEngineBundle(t *testing.T) []byte {
 	t.Helper()
 	runtime := zipBytes(t, map[string][]byte{
-		"python.exe":                        []byte("private-python"),
-		"python311.dll":                     []byte("python-dll"),
-		"python311._pth":                    []byte("Lib/site-packages\nimport site\n"),
-		"Lib/site-packages/ase/__init__.py": []byte("ase"),
+		"python.exe":                           []byte("private-python"),
+		"python311.dll":                        []byte("python-dll"),
+		"python311._pth":                       []byte("Lib/site-packages\nimport site\n"),
+		"Lib/site-packages/ase/__init__.py":    []byte("ase"),
+		"Lib/site-packages/ase/io/__init__.py": []byte("ase-io"),
+		"Lib/site-packages/ase/dft/dos.py":     []byte("ase-dft-dos"),
 	})
 	return zipBytes(t, map[string][]byte{
 		"python-runtime.zip": runtime,
 		"atomsk/atomsk.exe":  []byte("atomsk"),
 	})
+}
+
+func TestVerifyOfflineEngineBundleRequiresASEIOSmokeDependency(t *testing.T) {
+	runtime := zipBytes(t, map[string][]byte{
+		"python.exe":                           []byte("private-python"),
+		"python311.dll":                        []byte("python-dll"),
+		"python311._pth":                       []byte("Lib/site-packages\nimport site\n"),
+		"Lib/site-packages/ase/__init__.py":    []byte("ase"),
+		"Lib/site-packages/ase/io/__init__.py": []byte("ase-io"),
+	})
+	bundle := zipBytes(t, map[string][]byte{
+		"python-runtime.zip": runtime,
+		"atomsk/atomsk.exe":  []byte("atomsk"),
+	})
+	if err := VerifyOfflineEngineBundle(bundle); err == nil {
+		t.Fatal("bundle missing ase/dft/dos.py was accepted")
+	}
 }
 
 func TestVerifyOfflineEngineBundleAcceptsAppLocalRuntime(t *testing.T) {
@@ -70,11 +89,13 @@ func TestInstallOfflineEnginesWritesPrivateRuntimeAndAtomsk(t *testing.T) {
 
 func TestInstallOfflineEnginesRejectsPathTraversal(t *testing.T) {
 	runtime := zipBytes(t, map[string][]byte{
-		"python.exe":                        []byte("private-python"),
-		"python311.dll":                     []byte("python-dll"),
-		"python311._pth":                    []byte("import site\n"),
-		"Lib/site-packages/ase/__init__.py": []byte("ase"),
-		"../escaped.txt":                    []byte("must-not-escape"),
+		"python.exe":                           []byte("private-python"),
+		"python311.dll":                        []byte("python-dll"),
+		"python311._pth":                       []byte("import site\n"),
+		"Lib/site-packages/ase/__init__.py":    []byte("ase"),
+		"Lib/site-packages/ase/io/__init__.py": []byte("ase-io"),
+		"Lib/site-packages/ase/dft/dos.py":     []byte("ase-dft-dos"),
+		"../escaped.txt":                       []byte("must-not-escape"),
 	})
 	bundle := zipBytes(t, map[string][]byte{
 		"python-runtime.zip": runtime,

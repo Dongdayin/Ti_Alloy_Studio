@@ -104,7 +104,7 @@ func (s *State) ExportCalculationPackageWithOptions(req CalculationPackageReques
 	if err = zw.Close(); err != nil {
 		return "", "", nil, err
 	}
-	name := fmt.Sprintf("TiAlloyStudio-Phase3-R2-%s-%s-Inputs.zip", strings.ToUpper(req.Target), req.WorkflowPreset)
+	name := fmt.Sprintf("TiAlloyStudio-Phase3-R4-%s-%s-Inputs.zip", strings.ToUpper(req.Target), req.WorkflowPreset)
 	return name, "application/zip", buf.Bytes(), nil
 }
 
@@ -201,7 +201,7 @@ func singleLine(s string) string {
 }
 
 func calculationPackageREADME(req CalculationPackageRequest) string {
-	return fmt.Sprintf("Ti Alloy Studio Phase 3 R2 calculation-input package\r\nTarget: %s\r\nWorkflow preset: %s\r\nState: not_relaxed / not_calculated\r\n\r\nThis package prepares structures and editable solver templates from the current titanium-alloy model. It is not a finished calculation and contains no solver results.\r\n\r\nBefore production use, add the required licensed executables, potentials or pseudopotentials, numerical settings, and cluster/job scripts for your own environment.\r\n", req.Target, req.WorkflowPreset)
+	return fmt.Sprintf("Ti Alloy Studio Phase 3 R4 calculation-input package\r\nTarget: %s\r\nWorkflow preset: %s\r\nState: not_relaxed / not_calculated\r\n\r\nThis package prepares structures and editable solver templates from the current titanium-alloy model. It is not a finished calculation and contains no solver results.\r\n\r\nBefore production use, add the required licensed executables, potentials or pseudopotentials, numerical settings, and cluster/job scripts for your own environment.\r\n", req.Target, req.WorkflowPreset)
 }
 
 func writeVASPInputPackage(zw *zip.Writer, s model.Structure, req CalculationPackageRequest) error {

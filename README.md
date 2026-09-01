@@ -1,6 +1,6 @@
 # Ti Alloy Studio — titanium alloy modeler
 
-Ti Alloy Studio 0.4.2 Phase 3 R3 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
+Ti Alloy Studio 0.4.3 Phase 3 R4 is a Windows-first titanium-alloy structure modeling, validation, visualization, revision, export, and calculation-input preparation workbench.
 
 This release is deliberately modeling-only. It creates titanium-alloy structure files for later use in VASP, LAMMPS, GPUMD, NEP training, and other workflows, but it does not run those calculations. A normal user installs one offline package and does not configure Python, Conda, WSL, Atomsk, ATAT, or `PATH`.
 
@@ -46,7 +46,7 @@ Generated structures are labeled `not_relaxed` and `not_calculated`. The softwar
 
 POSCAR, LAMMPS data, and extended-XYZ exports are file formats, not evidence that the corresponding solver was run.
 
-Training configuration sets are seed structures for later external labeling. The requested configuration count is the exact number of exported structures. The first structure is the selected base geometry; additional structures use deterministic small strain and rattle perturbations and remain `not_calculated`.
+Training configuration sets are seed structures for later external labeling. The requested configuration count is the exact number of exported structures. The Generate button creates only the preview/base structure immediately and returns a compact index range instead of a full per-configuration JSON list; the full deterministic strain/rattle candidate list is materialized when the user exports the ZIP package. This keeps interactive large-model work responsive while preserving exact exported counts and `not_calculated` semantics.
 
 Phase 3 calculation packages contain structures, workflow presets, user-selected template parameters, and editable input templates only. They do not include VASP/LAMMPS/GPUMD outputs, potentials, pseudopotentials, or calculated labels.
 
