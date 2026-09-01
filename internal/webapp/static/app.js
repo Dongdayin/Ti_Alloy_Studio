@@ -28,6 +28,7 @@
     'validation_mode',
     'engine_check_status'
   ]);
+  const maxViewerAtoms = 6000;
 
   let active = 'random';
   let model = null;
@@ -56,6 +57,24 @@
     '"': '&quot;',
     "'": '&#39;'
   })[c]);
+
+  function viewerSampleIndices(count) {
+    if (count <= maxViewerAtoms) {
+      return Array.from({ length: count }, (_, i) => i);
+    }
+    const out = [];
+    const stride = count / maxViewerAtoms;
+    for (let i = 0; i < maxViewerAtoms; i++) {
+      out.push(Math.min(count - 1, Math.floor(i * stride)));
+    }
+    out[out.length - 1] = count - 1;
+    return out;
+  }
+
+  function viewerSamplingSummary(count) {
+    if (count <= maxViewerAtoms) return '';
+    return ` · 视图抽样 ${maxViewerAtoms}/${count}，导出仍是完整结构`;
+  }
 
   function toast(message) {
     const t = $('toast');
@@ -497,7 +516,7 @@
       ['PBC', s.pbc.map((v) => v ? 'T' : 'F').join(' ')]
     ];
     $('modelInfo').innerHTML = rows.map((r) => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('');
-    $('structureSummary').textContent = `${s.species.length} atoms · ${meta.phase || ''} ${String(meta.bravais || '').toUpperCase()}`;
+    $('structureSummary').textContent = `${s.species.length} atoms · ${meta.phase || ''} ${String(meta.bravais || '').toUpperCase()}${viewerSamplingSummary(s.species.length)}`;
   }
 
   function rotatedPoint(p) {
@@ -603,14 +622,17 @@
       ctx.clearRect(0, 0, w, h);
     }
 
-    const positions = model.structure.positions;
-    if (!positions.length) return;
+    const allPositions = model.structure.positions;
+    if (!allPositions.length) return;
     const min = [Infinity, Infinity, Infinity];
     const max = [-Infinity, -Infinity, -Infinity];
-    positions.forEach((p) => p.forEach((v, i) => {
+    allPositions.forEach((p) => p.forEach((v, i) => {
       min[i] = Math.min(min[i], v);
       max[i] = Math.max(max[i], v);
     }));
+    const sampleIndices = viewerSampleIndices(allPositions.length);
+    if (model.analysis) model.analysis.viewer_sampled_atoms = sampleIndices.length;
+    const positions = sampleIndices.map((i) => allPositions[i]);
     const center = min.map((v, i) => (v + max[i]) / 2);
     const extent = Math.max(...max.map((v, i) => v - min[i]), 1);
     const baseScale = 0.72 * Math.min(w, h) / extent * zoom;
@@ -618,7 +640,8 @@
 
     drawDirectionHelpers(ctx, w, h, center, baseScale, extent);
 
-    cv._pts = positions.map((p, i) => {
+    cv._pts = positions.map((p, drawIndex) => {
+      const i = sampleIndices[drawIndex];
       const r = rotatedPoint(p.map((v, k) => v - center[k]));
       const perspective = orthographic ? 1 : 1 / Math.max(0.35, 1 + r[2] / (extent * 3));
       return {

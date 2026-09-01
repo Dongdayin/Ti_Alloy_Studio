@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 func requireGeometryOnlyResponse(t *testing.T, res BuildResponse) {
@@ -53,6 +54,44 @@ func TestBuildUserDefaultsToFastValidationWithoutEngineCrossCheck(t *testing.T) 
 	}
 	if got := res.Analysis["engine_check_status"]; got != "skipped" {
 		t.Fatalf("engine_check_status = %v, want skipped", got)
+	}
+}
+
+func TestBuildUserTargetSizeHundredAngstromCompletesWithFastValidation(t *testing.T) {
+	st := NewState()
+	done := make(chan BuildResponse, 1)
+	errs := make(chan error, 1)
+	go func() {
+		res, err := st.BuildUser(BuildRequest{
+			Module:        "crystal",
+			Phase:         "alpha",
+			TargetX:       100,
+			TargetY:       100,
+			TargetZ:       100,
+			CompositionWt: map[string]float64{"Al": 6, "V": 4},
+			Seed:          27,
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- res
+	}()
+	select {
+	case err := <-errs:
+		t.Fatal(err)
+	case res := <-done:
+		if got := res.Structure.NAtoms(); got != 50864 {
+			t.Fatalf("100 Å target-size build produced %d atoms, want 50864", got)
+		}
+		if got := res.Analysis["validation_mode"]; got != "fast" {
+			t.Fatalf("validation_mode = %v, want fast", got)
+		}
+		if res.Validation.Status != "PASS" {
+			t.Fatalf("large target-size structure validation = %s: %+v", res.Validation.Status, res.Validation.Checks)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("100 Å target-size build did not finish; large-model validation must not scan all atom pairs")
 	}
 }
 

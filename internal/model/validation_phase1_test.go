@@ -3,6 +3,7 @@ package model
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestValidationDoesNotUseUniversalAbsoluteShortBondThreshold(t *testing.T) {
@@ -61,5 +62,25 @@ func TestDefectPeriodicImageDistanceIsRecorded(t *testing.T) {
 	got, ok = s.Meta["defect_periodic_image_distance_angstrom"].(float64)
 	if !ok || math.Abs(got-want) > 1e-12 {
 		t.Fatalf("substitution image distance = %v, want %.12g", s.Meta["defect_periodic_image_distance_angstrom"], want)
+	}
+}
+
+func TestLargeRepeatedStructureMinimumDistanceCompletes(t *testing.T) {
+	s := BuildAlphaTi(2.951, 4.684).Repeat(34, 34, 22)
+	if got := s.NAtoms(); got != 50864 {
+		t.Fatalf("large 100 Å-scale alpha-Ti repeat has %d atoms, want 50864", got)
+	}
+	done := make(chan float64, 1)
+	go func() {
+		done <- s.MinimumDistance()
+	}()
+	select {
+	case d := <-done:
+		ref := s.Meta["reference_nearest_neighbor_angstrom"].(float64)
+		if math.Abs(d-ref) > 1e-9 {
+			t.Fatalf("minimum distance = %.12g, want parent nearest-neighbor %.12g", d, ref)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("large target-size structure minimum-distance validation did not finish quickly")
 	}
 }

@@ -256,6 +256,21 @@ func TestStructureViewerOffersBundledTachyonStyleRendering(t *testing.T) {
 	}
 }
 
+func TestLargeStructureViewerSamplesAtomsButKeepsFullExport(t *testing.T) {
+	appJS := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"const maxViewerAtoms",
+		"function viewerSampleIndices",
+		"viewer_sampled_atoms",
+		"视图抽样",
+		"导出仍是完整结构",
+	} {
+		if !strings.Contains(appJS, needle) {
+			t.Errorf("large-structure viewer safeguard missing %q", needle)
+		}
+	}
+}
+
 func TestResultPanelsExposeReadableHighlightsInsteadOfRawMetricPlots(t *testing.T) {
 	page := servedAsset(t, "/")
 	for _, needle := range []string{

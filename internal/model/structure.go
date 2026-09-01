@@ -5,6 +5,8 @@ import (
 	"sort"
 )
 
+const exactMinimumDistanceAtomLimit = 4096
+
 type Structure struct {
 	Cell       Mat3           `json:"cell"`
 	Positions  []Vec3         `json:"positions"`
@@ -65,22 +67,223 @@ func (s Structure) MinimumDistance() float64 {
 		return math.Inf(1)
 	}
 	frac := s.Fractional(false)
+	if s.NAtoms() > exactMinimumDistanceAtomLimit {
+		if ref, ok := referenceNearestNeighbor(s); ok {
+			return minimumDistanceCellList(frac, s.Cell, s.PBC, ref, true)
+		}
+		if estimate := densityDistanceEstimate(s); estimate > 0 {
+			return minimumDistanceCellList(frac, s.Cell, s.PBC, estimate, false)
+		}
+	}
+	return minimumDistanceExact(frac, s.Cell, s.PBC)
+}
+
+func minimumDistanceExact(frac []Vec3, cell Mat3, pbc [3]bool) float64 {
 	best := math.Inf(1)
 	for i := 0; i < len(frac)-1; i++ {
 		for j := i + 1; j < len(frac); j++ {
 			d := VSub(frac[j], frac[i])
 			for a := 0; a < 3; a++ {
-				if s.PBC[a] {
+				if pbc[a] {
 					d[a] -= math.Round(d[a])
 				}
 			}
-			dist := Norm(FracToCart(d, s.Cell))
+			dist := Norm(FracToCart(d, cell))
 			if dist < best {
 				best = dist
 			}
 		}
 	}
 	return best
+}
+
+func referenceNearestNeighbor(s Structure) (float64, bool) {
+	if s.Meta == nil {
+		return 0, false
+	}
+	v, ok := s.Meta["reference_nearest_neighbor_angstrom"].(float64)
+	if !ok || !finite(v) || v <= 0 {
+		return 0, false
+	}
+	return v, true
+}
+
+func densityDistanceEstimate(s Structure) float64 {
+	if s.NAtoms() < 2 {
+		return 0
+	}
+	vol := s.Volume()
+	if !finite(vol) || vol <= 0 {
+		return 0
+	}
+	return 2.5 * math.Cbrt(vol/float64(s.NAtoms()))
+}
+
+type distanceBinKey struct {
+	x int
+	y int
+	z int
+}
+
+// minimumDistanceCellList is a bounded-neighbor search for large generated
+// models. With a reliable parent nearest-neighbor reference it returns the
+// exact minimum whenever atoms overlap or move closer than the parent spacing,
+// and otherwise returns the parent reference. This keeps validation interactive
+// for 100 Å-scale cells without weakening overlap detection.
+func minimumDistanceCellList(frac []Vec3, cell Mat3, pbc [3]bool, searchRadius float64, hasReference bool) float64 {
+	if len(frac) < 2 {
+		return math.Inf(1)
+	}
+	if !finite(searchRadius) || searchRadius <= 0 {
+		return minimumDistanceExact(frac, cell, pbc)
+	}
+
+	best := searchRadius
+	minFrac := Vec3{math.Inf(1), math.Inf(1), math.Inf(1)}
+	maxFrac := Vec3{math.Inf(-1), math.Inf(-1), math.Inf(-1)}
+	for _, f := range frac {
+		for a := 0; a < 3; a++ {
+			if pbc[a] {
+				continue
+			}
+			if f[a] < minFrac[a] {
+				minFrac[a] = f[a]
+			}
+			if f[a] > maxFrac[a] {
+				maxFrac[a] = f[a]
+			}
+		}
+	}
+
+	binCount := [3]int{1, 1, 1}
+	neighborBins := [3]int{1, 1, 1}
+	for a := 0; a < 3; a++ {
+		axisLength := Norm(cell[a])
+		if !pbc[a] {
+			span := maxFrac[a] - minFrac[a]
+			if finite(span) && span > 1e-12 {
+				axisLength *= span
+			}
+		}
+		if finite(axisLength) && axisLength > 0 {
+			binCount[a] = int(math.Floor(axisLength / searchRadius))
+			if binCount[a] < 1 {
+				binCount[a] = 1
+			}
+			if binCount[a] > len(frac) {
+				binCount[a] = len(frac)
+			}
+			neighborBins[a] = int(math.Ceil((searchRadius/axisLength)*float64(binCount[a]))) + 1
+			if neighborBins[a] < 1 {
+				neighborBins[a] = 1
+			}
+			if neighborBins[a] > binCount[a] {
+				neighborBins[a] = binCount[a]
+			}
+		}
+	}
+
+	binFor := func(f Vec3) distanceBinKey {
+		var b [3]int
+		for a := 0; a < 3; a++ {
+			coord := f[a]
+			if pbc[a] {
+				coord = Wrap01(coord)
+			} else {
+				span := maxFrac[a] - minFrac[a]
+				if finite(span) && span > 1e-12 {
+					coord = (coord - minFrac[a]) / span
+				} else {
+					coord = 0
+				}
+			}
+			x := int(math.Floor(coord * float64(binCount[a])))
+			if x < 0 {
+				x = 0
+			}
+			if x >= binCount[a] {
+				x = binCount[a] - 1
+			}
+			b[a] = x
+		}
+		return distanceBinKey{b[0], b[1], b[2]}
+	}
+
+	normalizeBin := func(x, axis int) (int, bool) {
+		if pbc[axis] {
+			n := binCount[axis]
+			x %= n
+			if x < 0 {
+				x += n
+			}
+			return x, true
+		}
+		if x < 0 || x >= binCount[axis] {
+			return 0, false
+		}
+		return x, true
+	}
+
+	grid := map[distanceBinKey][]int{}
+	foundCandidate := false
+	wrappedNeighborsCanRepeat := false
+	for a := 0; a < 3; a++ {
+		if pbc[a] && 2*neighborBins[a]+1 > binCount[a] {
+			wrappedNeighborsCanRepeat = true
+			break
+		}
+	}
+	for i, f := range frac {
+		k := binFor(f)
+		var seen map[distanceBinKey]struct{}
+		if wrappedNeighborsCanRepeat {
+			seen = map[distanceBinKey]struct{}{}
+		}
+		for dx := -neighborBins[0]; dx <= neighborBins[0]; dx++ {
+			bx, ok := normalizeBin(k.x+dx, 0)
+			if !ok {
+				continue
+			}
+			for dy := -neighborBins[1]; dy <= neighborBins[1]; dy++ {
+				by, ok := normalizeBin(k.y+dy, 1)
+				if !ok {
+					continue
+				}
+				for dz := -neighborBins[2]; dz <= neighborBins[2]; dz++ {
+					bz, ok := normalizeBin(k.z+dz, 2)
+					if !ok {
+						continue
+					}
+					nk := distanceBinKey{bx, by, bz}
+					if seen != nil {
+						if _, dup := seen[nk]; dup {
+							continue
+						}
+						seen[nk] = struct{}{}
+					}
+					for _, j := range grid[nk] {
+						d := VSub(frac[j], f)
+						for a := 0; a < 3; a++ {
+							if pbc[a] {
+								d[a] -= math.Round(d[a])
+							}
+						}
+						dist := Norm(FracToCart(d, cell))
+						if dist < best {
+							best = dist
+							foundCandidate = true
+						}
+					}
+				}
+			}
+		}
+		grid[k] = append(grid[k], i)
+	}
+
+	if foundCandidate || hasReference {
+		return best
+	}
+	return minimumDistanceExact(frac, cell, pbc)
 }
 
 // ShortestPeriodicTranslation returns the shortest non-zero lattice
