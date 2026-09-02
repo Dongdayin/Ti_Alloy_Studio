@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 )
 
 func requireNoCalculatedQuantities(t *testing.T, s Structure) {
@@ -312,4 +313,42 @@ func TestMechanicalAndDatasetBuildersEmitLabeledGeometryOnlyStructures(t *testin
 	for _, s := range dataset.Structures {
 		requireNoCalculatedQuantities(t, s)
 	}
+}
+
+func TestLargeCrackUsesScaledVisibleDefaultWithoutStalling(t *testing.T) {
+	host := BuildAlphaTi(2.951, 4.684).Repeat(34, 40, 22)
+	type result struct {
+		crack CrackModel
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		crack, err := BuildCrack(host, CrackOptions{Plane: "(010)", Front: "[001]"})
+		done <- result{crack: crack, err: err}
+	}()
+
+	var got result
+	select {
+	case got = <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("large crack generation stalled; nearest-neighbor scale should not be recomputed for every atom")
+	}
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	min, max := bounds(host)
+	spanX := max[0] - min[0]
+	if got.crack.LengthAngstrom < 0.25*spanX || got.crack.LengthAngstrom > 0.45*spanX {
+		t.Fatalf("default crack length = %.6g Å, want a visible fraction of %.6g Å", got.crack.LengthAngstrom, spanX)
+	}
+	if got.crack.OpeningAngstrom < 1.5*host.MinimumDistance() {
+		t.Fatalf("default crack opening = %.6g Å, too small to create a visible notch", got.crack.OpeningAngstrom)
+	}
+	if got.crack.RemovedAtomCount < host.NAtoms()/200 {
+		t.Fatalf("removed atoms = %d of %d, crack seed is too small to inspect", got.crack.RemovedAtomCount, host.NAtoms())
+	}
+	if countLabel(got.crack.Structure.SiteLabels, "crack_surface") == 0 {
+		t.Fatal("large crack model did not label crack-surface atoms")
+	}
+	requireNoCalculatedQuantities(t, got.crack.Structure)
 }

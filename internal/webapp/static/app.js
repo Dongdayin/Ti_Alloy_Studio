@@ -7,7 +7,10 @@
     Al: '#d49b35',
     V: '#4f78ba',
     alpha: '#477fa8',
-    beta: '#d48643'
+    beta: '#d48643',
+    crack_surface: '#e11d48',
+    near_indenter: '#7c3aed',
+    surface: '#f97316'
   };
   const phaseMetadata = {
     alpha: {
@@ -92,6 +95,14 @@
   function setActiveRevisionID(id) {
     activeRevisionID = id || '';
     updateExportTargetSummary();
+  }
+
+  function setBuildCompleteStatus() {
+    $('statusBadge').textContent = `模型已生成 · ${model?.structure?.species?.length || 0} 原子`;
+  }
+
+  function nextFrame() {
+    return new Promise((resolve) => requestAnimationFrame(resolve));
   }
 
   function toast(message) {
@@ -349,8 +360,9 @@
 		setActiveRevisionID(payload.active_revision_id || '');
 	  }
       selected = -1;
+      setBuildCompleteStatus();
+      await nextFrame();
 	  if (!pendingEditParentID) render();
-      $('statusBadge').textContent = `模型已生成 · ${model.structure?.species?.length || 0} 原子`;
     } catch (error) {
       $('statusBadge').textContent = '错误';
       toast(userFacingError(error, '生成失败'));
@@ -389,7 +401,8 @@
     const species = model?.structure?.species?.[index] || '';
     const label = model?.structure?.site_labels?.[index] || '';
     const mode = currentRenderMode();
-    const key = mode === 'phase' && label ? label : species;
+    const featureLabel = label && label !== 'bulk' && colors[label] ? label : '';
+    const key = featureLabel || (mode === 'phase' && label ? label : species);
     let base = colors[key] || colors[species] || '#708090';
     if (mode === 'depth') {
       const span = Math.max(1e-9, zMax - zMin);
@@ -1038,7 +1051,7 @@
       return `局域化学 · ${analysis.target_element || 'solute'} · 区域原子 ${analysis.cluster_size || 0}`;
     }
     if (model.module === 'crack') {
-      return `裂纹初始结构 · ${analysis.crack_plane || 'plane'} · 移除 ${analysis.removed_atom_count || 0} atoms`;
+      return `裂纹初始结构 · ${analysis.crack_plane || 'plane'} · 长 ${formatValue(analysis.crack_length_angstrom, 2)} Å · 开口 ${formatValue(analysis.crack_opening_angstrom, 2)} Å · 移除 ${analysis.removed_atom_count || 0} atoms`;
     }
     if (model.module === 'nanoindentation') {
       return `纳米压痕初始结构 · R ${formatValue(analysis.indenter_radius_angstrom, 2)} Å · depth ${formatValue(analysis.indentation_depth_angstrom, 2)} Å`;

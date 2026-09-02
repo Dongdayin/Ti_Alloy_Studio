@@ -4,9 +4,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
+
+	"tialloystudio/internal/model"
 )
 
 func requireGeometryOnlyResponse(t *testing.T, res BuildResponse) {
@@ -93,6 +96,42 @@ func TestBuildUserTargetSizeHundredAngstromCompletesWithFastValidation(t *testin
 	case <-time.After(6 * time.Second):
 		t.Fatal("100 Å target-size build did not finish; large-model validation must not scan all atom pairs")
 	}
+}
+
+func TestCrackSpecPercentDimensionsScaleToCurrentHost(t *testing.T) {
+	st := NewState()
+	res, err := st.BuildUser(BuildRequest{
+		Module:    "crack",
+		Phase:     "beta",
+		TargetX:   80,
+		TargetY:   60,
+		TargetZ:   40,
+		Vacuum:    0.5,
+		CrackSpec: "plane=(010),front=[001],length=50%,opening=10%",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	length, ok := res.Analysis["crack_length_angstrom"].(float64)
+	if !ok {
+		t.Fatalf("crack length diagnostic missing: %v", res.Analysis)
+	}
+	opening, ok := res.Analysis["crack_opening_angstrom"].(float64)
+	if !ok {
+		t.Fatalf("crack opening diagnostic missing: %v", res.Analysis)
+	}
+	spanX := model.Norm(res.Structure.Cell[0])
+	spanY := model.Norm(res.Structure.Cell[1]) - 0.5
+	if math.Abs(length-0.50*spanX) > 1e-9 {
+		t.Fatalf("crack length = %.12g Å, want 50%% of %.12g Å", length, spanX)
+	}
+	if math.Abs(opening-0.10*spanY) > 1e-9 {
+		t.Fatalf("crack opening = %.12g Å, want 10%% of %.12g Å", opening, spanY)
+	}
+	if got, ok := res.Analysis["removed_atom_count"].(int); !ok || got <= 0 {
+		t.Fatalf("percent-scaled crack removed atom count = %v, want a real notch", res.Analysis["removed_atom_count"])
+	}
+	requireGeometryOnlyResponse(t, res)
 }
 
 func TestBuildUserSQSTargetSizeHundredAngstromCompletes(t *testing.T) {

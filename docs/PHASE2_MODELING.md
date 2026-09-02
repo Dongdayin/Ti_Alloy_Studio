@@ -21,7 +21,7 @@ The default GUI/API validation mode is `fast`: internal structure validation run
 - Stacking-fault and gamma-surface geometry series: displacement structures only.
 - Twin geometries: first-pass α twin presets with parent/twin labels.
 - Local chemistry: SRO-like distributions, segregation, solute clusters, vacancy-solute style clusters, and simplified precipitate inclusions as composition/label operations.
-- Mechanical seed geometries: crack/notch, nanoindentation substrate plus indenter reference, and Voronoi polycrystal labels.
+- Mechanical seed geometries: crack/notch, nanoindentation substrate plus indenter reference, and Voronoi polycrystal labels. Crack `length` and `opening` accept either absolute angstrom values or percentages such as `length=35%,opening=4%`; percentage values are resolved against the current generated host dimensions before the notch is cut.
 - NEB geometry sets: initial/final and interpolated structures only.
 - Training configuration sets: extXYZ/POSCAR-ready structures tagged for later external labeling. The requested count is exact; the first entry is the base structure and later entries are deterministic small-strain/small-rattle geometry candidates, not NEB images.
 

@@ -465,6 +465,38 @@ func parseColonCountRegion(spec, fallbackElement string, fallbackCount int) (ele
 }
 
 func parseValueFromSpec(spec, key string, fallback float64) float64 {
+	raw, ok := parseRawValueFromSpec(spec, key)
+	if !ok {
+		return fallback
+	}
+	var v float64
+	if _, err := fmt.Sscanf(raw, "%f", &v); err == nil {
+		return v
+	}
+	return fallback
+}
+
+func parseValueFromSpecRelative(spec, key string, fallback, reference float64) float64 {
+	raw, ok := parseRawValueFromSpec(spec, key)
+	if !ok {
+		return fallback
+	}
+	if strings.HasSuffix(strings.TrimSpace(raw), "%") {
+		var percent float64
+		trimmed := strings.TrimSuffix(strings.TrimSpace(raw), "%")
+		if _, err := fmt.Sscanf(trimmed, "%f", &percent); err == nil && reference > 0 {
+			return reference * percent / 100
+		}
+		return fallback
+	}
+	var v float64
+	if _, err := fmt.Sscanf(raw, "%f", &v); err == nil {
+		return v
+	}
+	return fallback
+}
+
+func parseRawValueFromSpec(spec, key string) (string, bool) {
 	spec = strings.ReplaceAll(spec, ";", ",")
 	for _, field := range strings.Split(spec, ",") {
 		field = strings.TrimSpace(field)
@@ -473,13 +505,10 @@ func parseValueFromSpec(spec, key string, fallback float64) float64 {
 		}
 		parts := strings.SplitN(field, "=", 2)
 		if strings.EqualFold(strings.TrimSpace(parts[0]), key) {
-			var v float64
-			if _, err := fmt.Sscanf(strings.TrimSpace(parts[1]), "%f", &v); err == nil {
-				return v
-			}
+			return strings.TrimSpace(parts[1]), true
 		}
 	}
-	return fallback
+	return "", false
 }
 
 func parseStringFromSpec(spec, key, fallback string) string {
@@ -512,6 +541,13 @@ func appDefaultString(v, fallback string) string {
 		return fallback
 	}
 	return strings.TrimSpace(v)
+}
+
+func cellAxisLength(s model.Structure, axis int) float64 {
+	if axis < 0 || axis >= len(s.Cell) {
+		return 0
+	}
+	return model.Norm(s.Cell[axis])
 }
 
 type phase2SeriesEntry struct {
@@ -876,8 +912,8 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		crack, err := model.BuildCrack(out.Structure, model.CrackOptions{
 			Plane:   parseStringFromSpec(req.CrackSpec, "plane", appDefaultString(req.GBNormal, "(010)")),
 			Front:   parseStringFromSpec(req.CrackSpec, "front", appDefaultString(req.GBAxis, "[001]")),
-			Length:  parseValueFromSpec(req.CrackSpec, "length", 0),
-			Opening: parseValueFromSpec(req.CrackSpec, "opening", 0),
+			Length:  parseValueFromSpecRelative(req.CrackSpec, "length", 0, cellAxisLength(out.Structure, 0)),
+			Opening: parseValueFromSpecRelative(req.CrackSpec, "opening", 0, cellAxisLength(out.Structure, 1)),
 			Vacuum:  req.Vacuum,
 		})
 		if err != nil {
@@ -886,6 +922,8 @@ func (s *State) Build(in BuildRequest) (BuildResponse, error) {
 		out.Structure = crack.Structure
 		out.Analysis["crack_plane"] = crack.Plane
 		out.Analysis["crack_front"] = crack.Front
+		out.Analysis["crack_length_angstrom"] = crack.LengthAngstrom
+		out.Analysis["crack_opening_angstrom"] = crack.OpeningAngstrom
 		out.Analysis["removed_atom_count"] = crack.RemovedAtomCount
 		out.Analysis["initial_crack_geometry"] = "notch/crack seed only"
 
@@ -1348,6 +1386,12 @@ func moduleValidation(out *BuildResponse) {
 		}
 
 	case "crack":
+		if length, ok := out.Analysis["crack_length_angstrom"].(float64); ok && length > 0 {
+			addCheck(&out.Validation, "crack_length", "PASS", "Initial crack/notch length is recorded as a geometric modeling parameter.", length)
+		}
+		if opening, ok := out.Analysis["crack_opening_angstrom"].(float64); ok && opening > 0 {
+			addCheck(&out.Validation, "crack_opening", "PASS", "Initial crack/notch opening is recorded as a geometric modeling parameter.", opening)
+		}
 		if n, ok := out.Analysis["removed_atom_count"].(int); ok && n > 0 {
 			addCheck(&out.Validation, "crack_notch_atoms_removed", "PASS", "Crack/notch seed removed atoms and labeled nearby crack-surface atoms.", float64(n))
 		} else {

@@ -64,6 +64,20 @@ func TestWorkbenchSyncsNewBuildRevisionBeforeSaveAsExport(t *testing.T) {
 	}
 }
 
+func TestWorkbenchMarksBuildCompleteBeforeHeavyLargeModelRendering(t *testing.T) {
+	s := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"function nextFrame",
+		"await nextFrame();",
+		"setBuildCompleteStatus()",
+		"crack_surface",
+	} {
+		if !strings.Contains(s, needle) {
+			t.Fatalf("large-model completion/rendering behavior missing %q", needle)
+		}
+	}
+}
+
 func TestWorkbenchTranslatesNetworkDisconnectIntoActionableChineseMessage(t *testing.T) {
 	for _, path := range []string{"/app.js", "/project.js"} {
 		s := servedAsset(t, path)

@@ -115,6 +115,8 @@ type CrackModel struct {
 	Plane            string    `json:"plane"`
 	Front            string    `json:"front"`
 	RemovedAtomCount int       `json:"removed_atom_count"`
+	LengthAngstrom   float64   `json:"length_angstrom"`
+	OpeningAngstrom  float64   `json:"opening_angstrom"`
 }
 
 type IndenterOptions struct {
@@ -777,13 +779,19 @@ func BuildCrack(host Structure, opts CrackOptions) (CrackModel, error) {
 	}
 	min, max := bounds(host)
 	c := centerOf(host)
+	spanX := math.Max(max[0]-min[0], 0)
+	spanY := math.Max(max[1]-min[1], 0)
+	nn := host.MinimumDistance()
+	if !finite(nn) || nn <= 0 {
+		nn = 1
+	}
 	length := opts.Length
 	if length <= 0 {
-		length = 0.35 * (max[0] - min[0])
+		length = 0.35 * spanX
 	}
 	opening := opts.Opening
 	if opening <= 0 {
-		opening = math.Max(0.8, 0.25*host.MinimumDistance())
+		opening = math.Max(1.5*nn, 0.03*spanY)
 	}
 	positions := []Vec3{}
 	species := []string{}
@@ -796,7 +804,7 @@ func BuildCrack(host Structure, opts CrackOptions) (CrackModel, error) {
 			continue
 		}
 		label := "bulk"
-		if math.Abs(p[1]-c[1]) <= 2.2*opening && p[0] <= c[0]+host.MinimumDistance() && p[0] >= c[0]-length-host.MinimumDistance() {
+		if math.Abs(p[1]-c[1]) <= 2.2*opening && p[0] <= c[0]+nn && p[0] >= c[0]-length-nn {
 			label = "crack_surface"
 		}
 		positions = append(positions, p)
@@ -819,7 +827,10 @@ func BuildCrack(host Structure, opts CrackOptions) (CrackModel, error) {
 	out.Meta["crack_opening_angstrom"] = opening
 	out.Meta["removed_atom_count"] = removed
 	out.Meta["free_surface_or_vacuum"] = opts.Vacuum > 0
-	return CrackModel{Structure: out, Plane: defaultString(opts.Plane, "(010)"), Front: defaultString(opts.Front, "[001]"), RemovedAtomCount: removed}, nil
+	return CrackModel{
+		Structure: out, Plane: defaultString(opts.Plane, "(010)"), Front: defaultString(opts.Front, "[001]"),
+		RemovedAtomCount: removed, LengthAngstrom: length, OpeningAngstrom: opening,
+	}, nil
 }
 
 func BuildNanoindentation(host Structure, opts IndenterOptions) (NanoindentationModel, error) {
