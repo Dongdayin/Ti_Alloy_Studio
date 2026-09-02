@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -44,6 +45,34 @@ func TestRevisionAPISelectDeriveAndExportHistoricalSnapshot(t *testing.T) {
 	derived := postJSON(t, h, "/api/project/derive", deriveBody, http.StatusOK)
 	if !bytes.Contains(derived, []byte(`"parent_id":"`+first.ID+`"`)) || !bytes.Contains(derived, []byte(`"scientific_state":"not_relaxed"`)) {
 		t.Fatalf("derive response missing lineage/scientific state: %s", derived)
+	}
+}
+
+func TestBuildAPIResponseCanExportTheNewLargeActiveRevision(t *testing.T) {
+	state := app.NewState()
+	h := NewHandler(state)
+	postJSON(t, h, "/api/build", `{"module":"random","phase":"alpha","nx":4,"ny":4,"nz":6,"composition_wt":{"Al":6,"V":4},"seed":7}`, http.StatusOK)
+
+	body := postJSON(t, h, "/api/build", `{"module":"random","phase":"alpha","target_x":100,"target_y":100,"target_z":100,"composition_wt":{"Al":6,"V":4},"seed":27}`, http.StatusOK)
+	var out app.BuildResponse
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ActiveRevisionID == "" {
+		t.Fatalf("build response missing active revision id: %s", body)
+	}
+	if out.Structure.NAtoms() <= 1000 {
+		t.Fatalf("build response atoms = %d, want large target-size structure", out.Structure.NAtoms())
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/export?format=xyz&revision_id="+out.ActiveRevisionID, nil)
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("export status=%d body=%s", w.Code, w.Body.String())
+	}
+	if firstLine := strings.SplitN(w.Body.String(), "\n", 2)[0]; firstLine != strconv.Itoa(out.Structure.NAtoms()) {
+		t.Fatalf("exported XYZ atom count line = %q, want %d", firstLine, out.Structure.NAtoms())
 	}
 }
 

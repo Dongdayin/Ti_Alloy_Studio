@@ -73,15 +73,16 @@ type BuildRequest struct {
 }
 
 type BuildResponse struct {
-	Module     string                       `json:"module"`
-	Structure  model.Structure              `json:"structure"`
-	Validation model.ValidationReport       `json:"validation"`
-	Allocation *model.CompositionAllocation `json:"allocation,omitempty"`
-	SQS        *model.SQSQuality            `json:"sqs,omitempty"`
-	ATAT       *engines.ATATQuality         `json:"atat,omitempty"`
-	Analysis   map[string]any               `json:"analysis,omitempty"`
-	Series     map[string]any               `json:"series,omitempty"`
-	Engines    []engines.Report             `json:"engines,omitempty"`
+	Module           string                       `json:"module"`
+	ActiveRevisionID string                       `json:"active_revision_id,omitempty"`
+	Structure        model.Structure              `json:"structure"`
+	Validation       model.ValidationReport       `json:"validation"`
+	Allocation       *model.CompositionAllocation `json:"allocation,omitempty"`
+	SQS              *model.SQSQuality            `json:"sqs,omitempty"`
+	ATAT             *engines.ATATQuality         `json:"atat,omitempty"`
+	Analysis         map[string]any               `json:"analysis,omitempty"`
+	Series           map[string]any               `json:"series,omitempty"`
+	Engines          []engines.Report             `json:"engines,omitempty"`
 }
 
 type State struct {

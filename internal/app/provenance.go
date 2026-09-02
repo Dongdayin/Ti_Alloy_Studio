@@ -244,14 +244,15 @@ func cloneManifest(m ProjectManifest) ProjectManifest {
 	return out
 }
 
-func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) {
+func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) string {
 	p := stateProject(s)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	parent := p.manifest.ActiveRevisionID
 	now := timestampUTC()
+	id := newRecordID()
 	p.manifest.History = append(p.manifest.History, BuildRecord{
-		ID:              newRecordID(),
+		ID:              id,
 		ParentID:        parent,
 		CreatedAt:       now,
 		Module:          out.Module,
@@ -269,13 +270,14 @@ func recordTrackedBuild(s *State, req BuildRequest, out BuildResponse) {
 		ExternalRuns:    externalRuns(out),
 		ScientificState: "not_relaxed",
 	})
-	p.manifest.ActiveRevisionID = p.manifest.History[len(p.manifest.History)-1].ID
+	p.manifest.ActiveRevisionID = id
 	p.manifest.UpdatedAt = now
+	return id
 }
 
 func responseFromRecord(r BuildRecord) BuildResponse {
 	return BuildResponse{
-		Module: r.Module, Structure: r.Structure, Validation: r.Validation,
+		Module: r.Module, ActiveRevisionID: r.ID, Structure: r.Structure, Validation: r.Validation,
 		Allocation: r.Allocation, SQS: r.SQS, ATAT: r.ATAT,
 		Analysis: r.Analysis, Series: r.Series, Engines: r.Engines,
 	}
@@ -446,11 +448,16 @@ func (s *State) DeriveRevision(parentID string, change DeriveRequest) (BuildResp
 	s.Current = cloneBuildResponse(out)
 	s.CurrentRequest = req
 	s.mu.Unlock()
-	recordTrackedBuild(s, req, out)
+	out.ActiveRevisionID = recordTrackedBuild(s, req, out)
 	p := stateProject(s)
 	p.mu.Lock()
 	p.manifest.History[len(p.manifest.History)-1].ParentID = parentID
+	p.manifest.ActiveRevisionID = out.ActiveRevisionID
 	p.mu.Unlock()
+	s.mu.Lock()
+	s.Current = cloneBuildResponse(out)
+	s.CurrentRequest = req
+	s.mu.Unlock()
 	return cloneBuildResponse(out), nil
 }
 
@@ -518,7 +525,11 @@ func (s *State) BuildTracked(req BuildRequest) (BuildResponse, error) {
 	s.Current = out
 	s.CurrentRequest = normalized
 	s.mu.Unlock()
-	recordTrackedBuild(s, normalized, out)
+	out.ActiveRevisionID = recordTrackedBuild(s, normalized, out)
+	s.mu.Lock()
+	s.Current = out
+	s.CurrentRequest = normalized
+	s.mu.Unlock()
 	return out, nil
 }
 

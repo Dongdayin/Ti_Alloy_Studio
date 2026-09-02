@@ -50,6 +50,20 @@ func TestWorkbenchUsesSaveAsExportsAndInteractiveValues(t *testing.T) {
 	}
 }
 
+func TestWorkbenchSyncsNewBuildRevisionBeforeSaveAsExport(t *testing.T) {
+	s := servedAsset(t, "/app.js")
+	for _, needle := range []string{
+		"setActiveRevisionID(payload.active_revision_id || '')",
+		"updateExportTargetSummary()",
+		"当前导出结构",
+		"model.structure?.species?.length",
+	} {
+		if !strings.Contains(s, needle) {
+			t.Fatalf("new build/export target synchronization missing %q", needle)
+		}
+	}
+}
+
 func TestWorkbenchTranslatesNetworkDisconnectIntoActionableChineseMessage(t *testing.T) {
 	for _, path := range []string{"/app.js", "/project.js"} {
 		s := servedAsset(t, path)

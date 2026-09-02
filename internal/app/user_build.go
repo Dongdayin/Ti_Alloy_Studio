@@ -76,6 +76,10 @@ func (s *State) BuildUser(req BuildRequest) (BuildResponse, error) {
 	s.Current = out
 	s.CurrentRequest = normalized
 	s.mu.Unlock()
-	recordTrackedBuild(s, normalized, out)
+	out.ActiveRevisionID = recordTrackedBuild(s, normalized, out)
+	s.mu.Lock()
+	s.Current = out
+	s.CurrentRequest = normalized
+	s.mu.Unlock()
 	return out, nil
 }

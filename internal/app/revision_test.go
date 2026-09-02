@@ -3,6 +3,8 @@ package app
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +67,42 @@ func TestTrackedRevisionStoresExactImmutableSnapshotAndCanBeSelected(t *testing.
 	branched := st.ProjectManifest("")
 	if got := branched.History[len(branched.History)-1].ParentID; got != revision.ID {
 		t.Fatalf("build after selection parent = %q, want selected revision %q", got, revision.ID)
+	}
+}
+
+func TestBuildTrackedResponseIdentifiesNewActiveRevisionForExport(t *testing.T) {
+	st := NewState()
+	if _, err := st.BuildTracked(BuildRequest{
+		Module: "random", Phase: "alpha", NX: 4, NY: 4, NZ: 6,
+		CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	large, err := st.BuildTracked(BuildRequest{
+		Module: "random", Phase: "alpha", TargetX: 100, TargetY: 100, TargetZ: 100,
+		CompositionWt: map[string]float64{"Al": 6, "V": 4}, Seed: 27,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if large.Structure.NAtoms() <= 1000 {
+		t.Fatalf("large target-size model atoms = %d, want a large generated structure", large.Structure.NAtoms())
+	}
+	if large.ActiveRevisionID == "" {
+		t.Fatal("build response did not identify the new active revision")
+	}
+	if got := st.ProjectManifest("").ActiveRevisionID; got != large.ActiveRevisionID {
+		t.Fatalf("active revision id = %q, response id = %q", got, large.ActiveRevisionID)
+	}
+
+	_, _, content, err := st.ExportRevision(large.ActiveRevisionID, "xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstLine := strings.SplitN(content, "\n", 2)[0]
+	if firstLine != strconv.Itoa(large.Structure.NAtoms()) {
+		t.Fatalf("exported XYZ atom count line = %q, want %d", firstLine, large.Structure.NAtoms())
 	}
 }
 

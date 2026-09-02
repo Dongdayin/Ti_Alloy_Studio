@@ -76,6 +76,24 @@
     return ` · 视图抽样 ${maxViewerAtoms}/${count}，导出仍是完整结构`;
   }
 
+  function updateExportTargetSummary() {
+    if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `结构 ${activeRevisionID.slice(0, 8)}` : '无当前结构';
+    const summary = $('exportTargetSummary');
+    if (!summary) return;
+    if (!model) {
+      summary.textContent = '当前导出结构：未生成';
+      return;
+    }
+    const atoms = model ? (model.structure?.species?.length || 0) : 0;
+    const revision = activeRevisionID ? ` · 结构 ${activeRevisionID.slice(0, 8)}` : '';
+    summary.textContent = `当前导出结构：${atoms} 原子${revision}。XYZ 文件第一行就是 ${atoms}。`;
+  }
+
+  function setActiveRevisionID(id) {
+    activeRevisionID = id || '';
+    updateExportTargetSummary();
+  }
+
   function toast(message) {
     const t = $('toast');
     t.textContent = message;
@@ -321,17 +339,18 @@
       const payload = await response.json();
       if (!response.ok) throw Error(payload.error || '生成失败');
 	  if (pendingEditParentID) {
-		activeRevisionID = payload.active_revision_id || '';
+		setActiveRevisionID(payload.active_revision_id || '');
 		const revisionResponse = await fetch(`/api/project/revision?id=${encodeURIComponent(activeRevisionID)}`, { cache: 'no-store' });
 		if (!revisionResponse.ok) throw Error('无法读取修改后的结构');
 		showRevision(await revisionResponse.json());
 		pendingEditParentID = '';
 	  } else {
 		model = payload;
+		setActiveRevisionID(payload.active_revision_id || '');
 	  }
       selected = -1;
 	  if (!pendingEditParentID) render();
-      $('statusBadge').textContent = '模型已生成';
+      $('statusBadge').textContent = `模型已生成 · ${model.structure?.species?.length || 0} 原子`;
     } catch (error) {
       $('statusBadge').textContent = '错误';
       toast(userFacingError(error, '生成失败'));
@@ -1146,6 +1165,7 @@
     engines();
     draw3d();
     charts();
+    updateExportTargetSummary();
   }
 
 	function showRevision(record) {
@@ -1160,9 +1180,8 @@
 		series: record.series || {},
 		engines: record.engines || []
 	  };
-	  activeRevisionID = record.id || activeRevisionID;
+	  setActiveRevisionID(record.id || activeRevisionID);
 	  selected = -1;
-	  if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `结构 ${activeRevisionID.slice(0, 8)}` : '无当前结构';
 	  render();
 	}
 
@@ -1527,8 +1546,7 @@
 	window.TiAlloyStudio = {
 	  showRevision,
 	  setActiveRevision(id) {
-		activeRevisionID = id || '';
-		if ($('activeRevisionLabel')) $('activeRevisionLabel').textContent = activeRevisionID ? `结构 ${activeRevisionID.slice(0, 8)}` : '无当前结构';
+		setActiveRevisionID(id || '');
 	  },
 	  editFromRevision(id) { pendingEditParentID = id || ''; },
 	  switchMobilePanel,
